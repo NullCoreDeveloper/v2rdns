@@ -5,7 +5,6 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.dto.ProfileItem
-import com.v2ray.ang.dto.V2rayConfig
 import com.v2ray.ang.dto.V2rayConfig.OutboundBean
 import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.enums.NetworkType
@@ -30,7 +29,7 @@ object CoreOutboundBuilder  {
      * and returns the resulting [OutboundBean].
      */
     fun convert(profileItem: ProfileItem): OutboundBean? {
-        return when (profileItem.configType) {
+        val outbound = when (profileItem.configType) {
             EConfigType.VMESS -> toOutboundVmess(profileItem)
             EConfigType.CUSTOM -> null
             EConfigType.SHADOWSOCKS -> toOutboundShadowsocks(profileItem)
@@ -43,6 +42,88 @@ object CoreOutboundBuilder  {
             EConfigType.POLICYGROUP -> null
             else -> null
         }
+
+        outbound ?: return null
+        val ret = updateOutboundWithGlobalSettings(outbound)
+        if (!ret) return null
+        return outbound
+    }
+
+    /**
+     * Updates outbound settings based on global preferences.
+     *
+     * Applies multiplexing and protocol-specific settings to an outbound connection.
+     */
+    private fun updateOutboundWithGlobalSettings(outbound: OutboundBean): Boolean {
+        try {
+            var muxEnabled = MmkvManager.decodeSettingsBool(AppConfig.PREF_MUX_ENABLED, false)
+            val protocol = outbound.protocol
+            if (protocol.equals(EConfigType.SHADOWSOCKS.name, true)
+                || protocol.equals(EConfigType.SOCKS.name, true)
+                || protocol.equals(EConfigType.HTTP.name, true)
+                || protocol.equals(EConfigType.TROJAN.name, true)
+                || protocol.equals(EConfigType.WIREGUARD.name, true)
+                || protocol.equals(EConfigType.HYSTERIA2.name, true)
+                || protocol.equals(EConfigType.HYSTERIA.name, true)
+            ) {
+                muxEnabled = false
+            } else if (outbound.streamSettings?.network == NetworkType.XHTTP.type) {
+                muxEnabled = false
+            }
+
+            if (muxEnabled) {
+                outbound.mux?.enabled = true
+                outbound.mux?.concurrency = MmkvManager.decodeSettingsString(AppConfig.PREF_MUX_CONCURRENCY, "8").orEmpty().toInt()
+                outbound.mux?.xudpConcurrency = MmkvManager.decodeSettingsString(AppConfig.PREF_MUX_XUDP_CONCURRENCY, "16").orEmpty().toInt()
+                outbound.mux?.xudpProxyUDP443 = MmkvManager.decodeSettingsString(AppConfig.PREF_MUX_XUDP_QUIC, "reject")
+                if (protocol.equals(EConfigType.VLESS.name, true) && outbound.settings?.vnext?.first()?.users?.first()?.flow?.isNotEmpty() == true) {
+                    outbound.mux?.concurrency = -1
+                }
+            } else {
+                outbound.mux?.enabled = false
+                outbound.mux?.concurrency = -1
+            }
+
+            if (protocol.equals(EConfigType.WIREGUARD.name, true)) {
+                var localTunAddr = if (outbound.settings?.address == null) {
+                    listOf(AppConfig.WIREGUARD_LOCAL_ADDRESS_V4)
+                } else {
+                    outbound.settings?.address as List<*>
+                }
+                if (MmkvManager.decodeSettingsBool(AppConfig.PREF_IPV6_ENABLED) != true) {
+                    localTunAddr = listOf(localTunAddr.first())
+                }
+                outbound.settings?.address = localTunAddr
+            }
+
+            if (outbound.streamSettings?.network == AppConfig.DEFAULT_NETWORK
+                && outbound.streamSettings?.tcpSettings?.header?.type == AppConfig.HEADER_TYPE_HTTP
+            ) {
+                val path = outbound.streamSettings?.tcpSettings?.header?.request?.path
+                val host = outbound.streamSettings?.tcpSettings?.header?.request?.headers?.Host
+
+                val requestString: String by lazy {
+                    """{"version":"1.1","method":"GET","headers":{"User-Agent":["Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6478.122 Mobile Safari/537.36"],"Accept-Encoding":["gzip, deflate"],"Connection":["keep-alive"],"Pragma":["no-cache"]}}"""
+                }
+                outbound.streamSettings?.tcpSettings?.header?.request = JsonUtil.fromJson(
+                    requestString,
+                    OutboundBean.StreamSettingsBean.TcpSettingsBean.HeaderBean.RequestBean::class.java
+                )
+                outbound.streamSettings?.tcpSettings?.header?.request?.path =
+                    if (path.isNullOrEmpty()) {
+                        listOf("/")
+                    } else {
+                        path
+                    }
+                outbound.streamSettings?.tcpSettings?.header?.request?.headers?.Host = host
+            }
+
+
+        } catch (e: Exception) {
+            LogUtil.e(AppConfig.TAG, "Failed to update outbound with global settings", e)
+            return false
+        }
+        return true
     }
 
     /**

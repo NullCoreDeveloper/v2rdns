@@ -9,7 +9,6 @@ import com.v2ray.ang.dto.ProfileItem
 import com.v2ray.ang.dto.RulesetItem
 import com.v2ray.ang.dto.V2rayConfig
 import com.v2ray.ang.enums.EConfigType
-import com.v2ray.ang.enums.NetworkType
 import com.v2ray.ang.extension.isNotNullEmpty
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SettingsManager
@@ -249,8 +248,6 @@ object CoreConfigManager {
         for (config in validConfigs) {
             index++
             val outbound = convertProfile2Outbound(config) ?: continue
-            val ret = updateOutboundWithGlobalSettings(outbound)
-            if (!ret) continue
             outbound.tag = "proxy-$index"
             outboundsList.add(outbound)
         }
@@ -485,7 +482,6 @@ object CoreConfigManager {
                         LogUtil.w(AppConfig.TAG, "Could not convert profile '$tag' to outbound, skipping")
                         return@forEach
                     }
-                    updateOutboundWithGlobalSettings(outbound)
                     outbound.tag = tag
                     v2rayConfig.outbounds.add(outbound)
                     existingTags.add(tag)
@@ -796,8 +792,6 @@ object CoreConfigManager {
      */
     private fun getOutbounds(v2rayConfig: V2rayConfig, config: ProfileItem): Boolean? {
         val outbound = convertProfile2Outbound(config) ?: return null
-        val ret = updateOutboundWithGlobalSettings(outbound)
-        if (!ret) return null
 
         if (v2rayConfig.outbounds.isNotEmpty()) {
             v2rayConfig.outbounds[0] = outbound
@@ -836,7 +830,6 @@ object CoreConfigManager {
             if (prevNode != null) {
                 val prevOutbound = convertProfile2Outbound(prevNode)
                 if (prevOutbound != null) {
-                    updateOutboundWithGlobalSettings(prevOutbound)
                     prevOutbound.tag = AppConfig.TAG_PROXY + "2"
                     v2rayConfig.outbounds.add(prevOutbound)
                     outbound.ensureSockopt().dialerProxy = prevOutbound.tag
@@ -848,7 +841,6 @@ object CoreConfigManager {
             if (nextNode != null) {
                 val nextOutbound = convertProfile2Outbound(nextNode)
                 if (nextOutbound != null) {
-                    updateOutboundWithGlobalSettings(nextOutbound)
                     nextOutbound.tag = AppConfig.TAG_PROXY
                     v2rayConfig.outbounds.add(0, nextOutbound)
                     outbound.tag = AppConfig.TAG_PROXY + "1"
@@ -860,86 +852,6 @@ object CoreConfigManager {
             return false
         }
 
-        return true
-    }
-
-    /**
-     * Updates outbound settings based on global preferences.
-     *
-     * Applies multiplexing and protocol-specific settings to an outbound connection.
-     *
-     * @param outbound The outbound connection to update
-     * @return true if the update was successful, false otherwise
-     */
-    private fun updateOutboundWithGlobalSettings(outbound: V2rayConfig.OutboundBean): Boolean {
-        try {
-            var muxEnabled = MmkvManager.decodeSettingsBool(AppConfig.PREF_MUX_ENABLED, false)
-            val protocol = outbound.protocol
-            if (protocol.equals(EConfigType.SHADOWSOCKS.name, true)
-                || protocol.equals(EConfigType.SOCKS.name, true)
-                || protocol.equals(EConfigType.HTTP.name, true)
-                || protocol.equals(EConfigType.TROJAN.name, true)
-                || protocol.equals(EConfigType.WIREGUARD.name, true)
-                || protocol.equals(EConfigType.HYSTERIA2.name, true)
-                || protocol.equals(EConfigType.HYSTERIA.name, true)
-            ) {
-                muxEnabled = false
-            } else if (outbound.streamSettings?.network == NetworkType.XHTTP.type) {
-                muxEnabled = false
-            }
-
-            if (muxEnabled) {
-                outbound.mux?.enabled = true
-                outbound.mux?.concurrency = MmkvManager.decodeSettingsString(AppConfig.PREF_MUX_CONCURRENCY, "8").orEmpty().toInt()
-                outbound.mux?.xudpConcurrency = MmkvManager.decodeSettingsString(AppConfig.PREF_MUX_XUDP_CONCURRENCY, "16").orEmpty().toInt()
-                outbound.mux?.xudpProxyUDP443 = MmkvManager.decodeSettingsString(AppConfig.PREF_MUX_XUDP_QUIC, "reject")
-                if (protocol.equals(EConfigType.VLESS.name, true) && outbound.settings?.vnext?.first()?.users?.first()?.flow?.isNotEmpty() == true) {
-                    outbound.mux?.concurrency = -1
-                }
-            } else {
-                outbound.mux?.enabled = false
-                outbound.mux?.concurrency = -1
-            }
-
-            if (protocol.equals(EConfigType.WIREGUARD.name, true)) {
-                var localTunAddr = if (outbound.settings?.address == null) {
-                    listOf(AppConfig.WIREGUARD_LOCAL_ADDRESS_V4)
-                } else {
-                    outbound.settings?.address as List<*>
-                }
-                if (MmkvManager.decodeSettingsBool(AppConfig.PREF_IPV6_ENABLED) != true) {
-                    localTunAddr = listOf(localTunAddr.first())
-                }
-                outbound.settings?.address = localTunAddr
-            }
-
-            if (outbound.streamSettings?.network == AppConfig.DEFAULT_NETWORK
-                && outbound.streamSettings?.tcpSettings?.header?.type == AppConfig.HEADER_TYPE_HTTP
-            ) {
-                val path = outbound.streamSettings?.tcpSettings?.header?.request?.path
-                val host = outbound.streamSettings?.tcpSettings?.header?.request?.headers?.Host
-
-                val requestString: String by lazy {
-                    """{"version":"1.1","method":"GET","headers":{"User-Agent":["Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6478.122 Mobile Safari/537.36"],"Accept-Encoding":["gzip, deflate"],"Connection":["keep-alive"],"Pragma":"no-cache"}}"""
-                }
-                outbound.streamSettings?.tcpSettings?.header?.request = JsonUtil.fromJson(
-                    requestString,
-                    V2rayConfig.OutboundBean.StreamSettingsBean.TcpSettingsBean.HeaderBean.RequestBean::class.java
-                )
-                outbound.streamSettings?.tcpSettings?.header?.request?.path =
-                    if (path.isNullOrEmpty()) {
-                        listOf("/")
-                    } else {
-                        path
-                    }
-                outbound.streamSettings?.tcpSettings?.header?.request?.headers?.Host = host
-            }
-
-
-        } catch (e: Exception) {
-            LogUtil.e(AppConfig.TAG, "Failed to update outbound with global settings", e)
-            return false
-        }
         return true
     }
 
