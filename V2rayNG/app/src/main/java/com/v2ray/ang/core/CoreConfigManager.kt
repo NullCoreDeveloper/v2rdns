@@ -1,10 +1,9 @@
-package com.v2ray.ang.handler
+package com.v2ray.ang.core
 
 import android.content.Context
 import android.text.TextUtils
 import com.google.gson.JsonArray
 import com.v2ray.ang.AppConfig
-import com.v2ray.ang.core.CoreOutboundBuilder
 import com.v2ray.ang.dto.ConfigResult
 import com.v2ray.ang.dto.ProfileItem
 import com.v2ray.ang.dto.RulesetItem
@@ -12,13 +11,15 @@ import com.v2ray.ang.dto.V2rayConfig
 import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.enums.NetworkType
 import com.v2ray.ang.extension.isNotNullEmpty
+import com.v2ray.ang.handler.MmkvManager
+import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.util.HttpUtil
 import com.v2ray.ang.util.JsonUtil
 import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.PackageUidResolver
 import com.v2ray.ang.util.Utils
 
-object V2rayConfigManager {
+object CoreConfigManager {
     private var initConfigCache: String? = null
     private var initConfigCacheWithTun: String? = null
 
@@ -1091,7 +1092,7 @@ object V2rayConfigManager {
     /**
      * Converts a profile item to an outbound configuration.
      *
-     * Delegates to [com.v2ray.ang.core.CoreOutboundBuilder] which owns all per-protocol
+     * Delegates to [CoreOutboundBuilder] which owns all per-protocol
      * conversion logic, keeping this manager focused on config orchestration.
      *
      * @param profileItem The profile item to convert
