@@ -41,6 +41,8 @@ class RealPingWorkerService(
                 try {
                     val result = startRealPing(guid)
                     MessageUtil.sendMsg2UI(context, AppConfig.MSG_MEASURE_CONFIG_SUCCESS, Pair(guid, result))
+                } catch (_: Throwable) {
+                    // ignore
                 } finally {
                     val count = totalCount.decrementAndGet()
                     val left = runningCount.decrementAndGet()
