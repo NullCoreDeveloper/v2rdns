@@ -197,24 +197,20 @@ object CoreConfigManager {
         val config = configContext.selectedProfile
         val resolvedProfiles = configContext.resolvedProfiles
 
-        val address = config.server ?: return null
-        if (!Utils.isPureIpAddress(address) && !Utils.isValidUrl(address)) {
-            LogUtil.w(AppConfig.TAG, "$address is an invalid ip or domain")
-            return null
-        }
-
         val v2rayConfig = initV2rayConfig(configContext) ?: return null
         v2rayConfig.log.loglevel = MmkvManager.decodeSettingsString(AppConfig.PREF_LOGLEVEL) ?: "warning"
         v2rayConfig.remarks = config.remarks
 
         getInbounds(v2rayConfig)
 
-        // Chain nodes are ordered as: next... -> current -> ...prev.
         // Build and link the whole chain directly from resolvedProfiles.
         val chainOutbounds = resolvedProfiles.mapNotNull { profile ->
             convertProfile2Outbound(profile)
         }.toMutableList()
-        if (chainOutbounds.size < 2) return null
+        if (chainOutbounds.size < 2) {
+            LogUtil.w(AppConfig.TAG, "Proxy chain requires at least 2 valid profiles, but only ${chainOutbounds.size} found")
+            return null
+        }
 
         chainOutbounds.forEachIndexed { index, outbound ->
             outbound.tag = if (index == 0) AppConfig.TAG_PROXY else AppConfig.TAG_PROXY + index

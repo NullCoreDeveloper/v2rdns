@@ -30,6 +30,7 @@
     <string name="menu_item_import_config_clipboard">从剪贴板导入</string>
     <string name="menu_item_import_config_local">从本地导入</string>
     <string name="menu_item_import_config_policy_group">添加 [策略组]</string>
+    <string name="menu_item_import_config_proxy_chain">添加 [链式代理]</string>
     <string name="menu_item_import_config_manually_vmess">添加 [VMess]</string>
     <string name="menu_item_import_config_manually_vless">添加 [VLESS]</string>
     <string name="menu_item_import_config_manually_ss">添加 [Shadowsocks]</string>
@@ -376,6 +377,12 @@
     <string name="title_policy_group_type">策略组类型</string>
     <string name="title_policy_group_subscription_id">来自订阅分组</string>
     <string name="title_policy_group_subscription_filter">别名正则过滤</string>
+    <string name="server_proxy_chain_members">代理链成员</string>
+    <string name="server_proxy_chain_pick_members">点此选择成员</string>
+    <string name="server_proxy_chain_member_unselected">请选择成员</string>
+    <string name="server_proxy_chain_members_unselected">请为链路中的每一行选择成员</string>
+    <string name="server_proxy_chain_members_insufficient">成员数量不足</string>
+    <string name="server_proxy_chain_members_invalid">无效的链路成员: %1$s</string>
 
     <!-- BackupActivity -->
     <string name="title_configuration_backup_restore">备份 &amp; 还原</string>
