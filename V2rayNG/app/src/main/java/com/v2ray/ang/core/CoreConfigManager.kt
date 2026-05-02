@@ -5,9 +5,11 @@ import android.text.TextUtils
 import com.google.gson.JsonArray
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.dto.ConfigResult
+import com.v2ray.ang.dto.CoreConfigContext
 import com.v2ray.ang.dto.ProfileItem
 import com.v2ray.ang.dto.RulesetItem
 import com.v2ray.ang.dto.V2rayConfig
+import com.v2ray.ang.enums.CoreResolvedType
 import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.extension.isNotNullEmpty
 import com.v2ray.ang.handler.MmkvManager
@@ -25,7 +27,7 @@ object CoreConfigManager {
     //region get config function
 
     /**
-     * Retrieves the V2ray configuration for the given GUID.
+     * Builds normal runtime config JSON for the selected profile.
      *
      * @param context The context of the caller.
      * @param guid The unique identifier for the V2ray configuration.
@@ -33,14 +35,18 @@ object CoreConfigManager {
      */
     fun getV2rayConfig(context: Context, guid: String): ConfigResult {
         try {
-            val config = MmkvManager.decodeServerConfig(guid) ?: return ConfigResult(false)
-            return if (config.configType == EConfigType.CUSTOM) {
-                getV2rayCustomConfig(context, guid, config)
-            } else if (config.configType == EConfigType.POLICYGROUP) {
-                getV2rayGroupConfig(context, guid, config)
-            } else {
-                getV2rayNormalConfig(context, guid, config)
+            val configContext = CoreConfigContextBuilder.build(context, guid) ?: return ConfigResult(false)
+            if (configContext.resolvedType == CoreResolvedType.CUSTOM) {
+                return getV2rayCustomConfig(configContext)
             }
+            val v2rayConfig = when (configContext.resolvedType) {
+                CoreResolvedType.POLICYGROUP -> buildGroupConfig(configContext)
+                CoreResolvedType.PROXYCHAIN -> buildProxyChainConfig(configContext)
+                CoreResolvedType.NORMAL -> buildNormalConfig(configContext)
+                CoreResolvedType.CUSTOM -> null
+            } ?: return ConfigResult(false)
+
+            return toConfigResult(configContext.guid, v2rayConfig)
         } catch (e: Exception) {
             LogUtil.e(AppConfig.TAG, "Failed to get V2ray config", e)
             return ConfigResult(false)
@@ -48,7 +54,10 @@ object CoreConfigManager {
     }
 
     /**
-     * Retrieves the speedtest V2ray configuration for the given GUID.
+     * Builds speedtest config for the selected profile.
+     *
+     * It reuses the same build flow as normal config, then removes
+     * unnecessary sections for delay testing.
      *
      * @param context The context of the caller.
      * @param guid The unique identifier for the V2ray configuration.
@@ -56,15 +65,20 @@ object CoreConfigManager {
      */
     fun getV2rayConfig4Speedtest(context: Context, guid: String): ConfigResult {
         try {
-            val config = MmkvManager.decodeServerConfig(guid) ?: return ConfigResult(false)
-            return if (config.configType == EConfigType.CUSTOM) {
-                getV2rayCustomConfig(context, guid, config)
-            } else if (config.configType == EConfigType.POLICYGROUP) {
-                // The number of policy groups will not be very large, so no special handling is needed.
-                getV2rayGroupConfig(context, guid, config)
-            } else {
-                getV2rayNormalConfig4Speedtest(context, guid, config)
+            val configContext = CoreConfigContextBuilder.build(context, guid) ?: return ConfigResult(false)
+            if (configContext.resolvedType == CoreResolvedType.CUSTOM) {
+                return getV2rayCustomConfig(configContext)
             }
+            val v2rayConfig = when (configContext.resolvedType) {
+                CoreResolvedType.POLICYGROUP -> buildGroupConfig(configContext)
+                CoreResolvedType.PROXYCHAIN -> buildProxyChainConfig(configContext)
+                CoreResolvedType.NORMAL -> buildNormalConfig(configContext)
+                CoreResolvedType.CUSTOM -> null
+            } ?: return ConfigResult(false)
+
+            postProcessForSpeedtest(v2rayConfig)
+
+            return toConfigResult(configContext.guid, v2rayConfig)
         } catch (e: Exception) {
             LogUtil.e(AppConfig.TAG, "Failed to get V2ray config for speedtest", e)
             return ConfigResult(false)
@@ -72,13 +86,11 @@ object CoreConfigManager {
     }
 
     /**
-     * Retrieves the custom V2ray configuration.
-     *
-     * @param guid The unique identifier for the V2ray configuration.
-     * @param config The profile item containing the configuration details.
-     * @return A ConfigResult object containing the result of the configuration retrieval.
+     * Builds config result for CUSTOM profiles.
      */
-    private fun getV2rayCustomConfig(context: Context, guid: String, config: ProfileItem): ConfigResult {
+    private fun getV2rayCustomConfig(configContext: CoreConfigContext): ConfigResult {
+        val context = configContext.context
+        val guid = configContext.guid
         val raw = MmkvManager.decodeServerRaw(guid) ?: return ConfigResult(false)
         val result = ConfigResult(true, guid, raw)
         if (!needTun()) {
@@ -127,109 +139,11 @@ object CoreConfigManager {
         return JsonUtil.toJsonPretty(json)?.let { ConfigResult(true, guid, it) } ?: result
     }
 
-    /**
-     * Retrieves the group V2ray configuration.
-     *
-     * @param context The context in which the function is called.
-     * @param guid The unique identifier for the V2ray configuration.
-     * @param config The profile item containing the configuration details.
-     * @return A ConfigResult object containing the result of the configuration retrieval.
-     */
-    private fun getV2rayGroupConfig(context: Context, guid: String, config: ProfileItem): ConfigResult {
-        val result = ConfigResult(false)
-
-        val serverList = MmkvManager.decodeAllServerList()
-        val configList = serverList
-            .mapNotNull { id -> MmkvManager.decodeServerConfig(id) }
-            .filter { profile ->
-                val subscriptionId = config.policyGroupSubscriptionId
-                if (subscriptionId.isNullOrBlank()) {
-                    true
-                } else {
-                    profile.subscriptionId == subscriptionId
-                }
-            }
-            .filter { profile ->
-                val filter = config.policyGroupFilter
-                if (filter.isNullOrBlank()) {
-                    true
-                } else {
-                    try {
-                        Regex(filter).containsMatchIn(profile.remarks)
-                    } catch (e: Exception) {
-                        profile.remarks.contains(filter)
-                    }
-                }
-            }
-
-        val v2rayConfig = getV2rayMultipleConfig(context, config, configList) ?: return result
-
-        result.status = true
-        result.content = JsonUtil.toJsonPretty(v2rayConfig) ?: ""
-        result.guid = guid
-
-        return result
-    }
-
-    /**
-     * Retrieves the normal V2ray configuration.
-     *
-     * @param context The context in which the function is called.
-     * @param guid The unique identifier for the V2ray configuration.
-     * @param config The profile item containing the configuration details.
-     * @return A ConfigResult object containing the result of the configuration retrieval.
-     */
-    private fun getV2rayNormalConfig(context: Context, guid: String, config: ProfileItem): ConfigResult {
-        val result = ConfigResult(false)
-
-        val address = config.server ?: return result
-        if (!Utils.isPureIpAddress(address)) {
-            if (!Utils.isValidUrl(address)) {
-                LogUtil.w(AppConfig.TAG, "$address is an invalid ip or domain")
-                return result
-            }
-        }
-
-        val v2rayConfig = initV2rayConfig(context) ?: return result
-        v2rayConfig.log.loglevel = MmkvManager.decodeSettingsString(AppConfig.PREF_LOGLEVEL) ?: "warning"
-        v2rayConfig.remarks = config.remarks
-
-        getInbounds(v2rayConfig)
-
-        getOutbounds(v2rayConfig, config) ?: return result
-        getMoreOutbounds(v2rayConfig, config.subscriptionId)
-
-        getRouting(context, v2rayConfig)
-
-        getFakeDns(v2rayConfig)
-
-        getDns(v2rayConfig)
-
-        if (MmkvManager.decodeSettingsBool(AppConfig.PREF_LOCAL_DNS_ENABLED) == true) {
-            getCustomLocalDns(v2rayConfig)
-        }
-        if (MmkvManager.decodeSettingsBool(AppConfig.PREF_SPEED_ENABLED) != true) {
-            v2rayConfig.stats = null
-            v2rayConfig.policy = null
-        }
-
-        //Resolve and add to DNS Hosts
-        if (MmkvManager.decodeSettingsString(AppConfig.PREF_OUTBOUND_DOMAIN_RESOLVE_METHOD, "1") == "1") {
-            resolveOutboundDomainsToHosts(v2rayConfig)
-        }
-
-        result.status = true
-        result.content = JsonUtil.toJsonPretty(v2rayConfig) ?: ""
-        result.guid = guid
-        return result
-    }
-
-    private fun getV2rayMultipleConfig(context: Context, config: ProfileItem, configList: List<ProfileItem>): V2rayConfig? {
-        val validConfigs = configList.asSequence().filter { it.server.isNotNullEmpty() }
-            .filter { !Utils.isPureIpAddress(it.server!!) || Utils.isValidUrl(it.server!!) }
-            .filter { it.configType != EConfigType.CUSTOM }
-            .filter { it.configType != EConfigType.POLICYGROUP }
-            .toList()
+    /** Builds full config for policy-group mode. */
+    private fun buildGroupConfig(configContext: CoreConfigContext): V2rayConfig? {
+        val context = configContext.context
+        val config = configContext.selectedProfile
+        val validConfigs = configContext.resolvedProfiles
 
         if (validConfigs.isEmpty()) {
             LogUtil.w(AppConfig.TAG, "All configs are invalid")
@@ -245,21 +159,18 @@ object CoreConfigManager {
         v2rayConfig.outbounds.removeAt(0)
         val outboundsList = mutableListOf<V2rayConfig.OutboundBean>()
         var index = 0
-        for (config in validConfigs) {
+        for (item in validConfigs) {
             index++
-            val outbound = convertProfile2Outbound(config) ?: continue
-            outbound.tag = "proxy-$index"
+            val outbound = convertProfile2Outbound(item) ?: continue
+            outbound.tag = "proxy-$index-${item.remarks.trim()}"
             outboundsList.add(outbound)
         }
         outboundsList.addAll(v2rayConfig.outbounds)
         v2rayConfig.outbounds = ArrayList(outboundsList)
 
         getRouting(context, v2rayConfig)
-
         getFakeDns(v2rayConfig)
-
         getDns(v2rayConfig)
-
         getBalance(v2rayConfig, config)
 
         if (MmkvManager.decodeSettingsBool(AppConfig.PREF_LOCAL_DNS_ENABLED)) {
@@ -270,7 +181,7 @@ object CoreConfigManager {
             v2rayConfig.policy = null
         }
 
-        //Resolve and add to DNS Hosts
+        // Resolve and add to DNS Hosts
         if (MmkvManager.decodeSettingsString(AppConfig.PREF_OUTBOUND_DOMAIN_RESOLVE_METHOD, "1") == "1") {
             resolveOutboundDomainsToHosts(v2rayConfig)
         }
@@ -279,29 +190,111 @@ object CoreConfigManager {
     }
 
     /**
-     * Retrieves the normal V2ray configuration for speedtest.
+     * Builds full V2Ray config for proxy-chain mode.
      *
-     * @param context The context in which the function is called.
-     * @param guid The unique identifier for the V2ray configuration.
-     * @param config The profile item containing the configuration details.
-     * @return A ConfigResult object containing the result of the configuration retrieval.
+     * Uses resolvedProfiles as an ordered chain and links each hop
+     * with dialerProxy.
      */
-    private fun getV2rayNormalConfig4Speedtest(context: Context, guid: String, config: ProfileItem): ConfigResult {
-        val result = ConfigResult(false)
+    private fun buildProxyChainConfig(configContext: CoreConfigContext): V2rayConfig? {
+        val context = configContext.context
+        val config = configContext.selectedProfile
+        val resolvedProfiles = configContext.resolvedProfiles
 
-        val address = config.server ?: return result
-        if (!Utils.isPureIpAddress(address)) {
-            if (!Utils.isValidUrl(address)) {
-                LogUtil.w(AppConfig.TAG, "$address is an invalid ip or domain")
-                return result
-            }
+        val address = config.server ?: return null
+        if (!Utils.isPureIpAddress(address) && !Utils.isValidUrl(address)) {
+            LogUtil.w(AppConfig.TAG, "$address is an invalid ip or domain")
+            return null
         }
 
-        val v2rayConfig = initV2rayConfig(context) ?: return result
+        val v2rayConfig = initV2rayConfig(context) ?: return null
+        v2rayConfig.log.loglevel = MmkvManager.decodeSettingsString(AppConfig.PREF_LOGLEVEL) ?: "warning"
+        v2rayConfig.remarks = config.remarks
 
-        getOutbounds(v2rayConfig, config) ?: return result
-        getMoreOutbounds(v2rayConfig, config.subscriptionId)
+        getInbounds(v2rayConfig)
 
+        // Chain nodes are ordered as: next... -> current -> ...prev.
+        // Build and link the whole chain directly from resolvedProfiles.
+        val chainOutbounds = resolvedProfiles.mapNotNull { profile ->
+            convertProfile2Outbound(profile)
+        }.toMutableList()
+        if (chainOutbounds.size < 2) return null
+
+        chainOutbounds.forEachIndexed { index, outbound ->
+            outbound.tag = if (index == 0) AppConfig.TAG_PROXY else AppConfig.TAG_PROXY + index
+        }
+        for (index in 0 until chainOutbounds.size - 1) {
+            chainOutbounds[index].ensureSockopt().dialerProxy = chainOutbounds[index + 1].tag
+        }
+
+        // Keep built-in outbounds and place the chain before them.
+        val builtinOutbounds = if (v2rayConfig.outbounds.size > 1) {
+            v2rayConfig.outbounds.drop(1)
+        } else {
+            emptyList()
+        }
+        v2rayConfig.outbounds = ArrayList(chainOutbounds + builtinOutbounds)
+
+        getRouting(context, v2rayConfig)
+        getFakeDns(v2rayConfig)
+        getDns(v2rayConfig)
+
+        if (MmkvManager.decodeSettingsBool(AppConfig.PREF_LOCAL_DNS_ENABLED) == true) {
+            getCustomLocalDns(v2rayConfig)
+        }
+        if (MmkvManager.decodeSettingsBool(AppConfig.PREF_SPEED_ENABLED) != true) {
+            v2rayConfig.stats = null
+            v2rayConfig.policy = null
+        }
+
+        // Resolve and add to DNS Hosts
+        if (MmkvManager.decodeSettingsString(AppConfig.PREF_OUTBOUND_DOMAIN_RESOLVE_METHOD, "1") == "1") {
+            resolveOutboundDomainsToHosts(v2rayConfig)
+        }
+
+        return v2rayConfig
+    }
+
+    /** Builds full config for normal single-node mode. */
+    private fun buildNormalConfig(configContext: CoreConfigContext): V2rayConfig? {
+        val context = configContext.context
+        val config = configContext.selectedProfile
+
+        val address = config.server ?: return null
+        if (!Utils.isPureIpAddress(address) && !Utils.isValidUrl(address)) {
+            LogUtil.w(AppConfig.TAG, "$address is an invalid ip or domain")
+            return null
+        }
+
+        val v2rayConfig = initV2rayConfig(context) ?: return null
+        v2rayConfig.log.loglevel = MmkvManager.decodeSettingsString(AppConfig.PREF_LOGLEVEL) ?: "warning"
+        v2rayConfig.remarks = config.remarks
+
+        getInbounds(v2rayConfig)
+        getOutbounds(v2rayConfig, config) ?: return null
+        getRouting(context, v2rayConfig)
+        getFakeDns(v2rayConfig)
+        getDns(v2rayConfig)
+
+        if (MmkvManager.decodeSettingsBool(AppConfig.PREF_LOCAL_DNS_ENABLED) == true) {
+            getCustomLocalDns(v2rayConfig)
+        }
+        if (MmkvManager.decodeSettingsBool(AppConfig.PREF_SPEED_ENABLED) != true) {
+            v2rayConfig.stats = null
+            v2rayConfig.policy = null
+        }
+
+        // Resolve and add to DNS Hosts
+        if (MmkvManager.decodeSettingsString(AppConfig.PREF_OUTBOUND_DOMAIN_RESOLVE_METHOD, "1") == "1") {
+            resolveOutboundDomainsToHosts(v2rayConfig)
+        }
+
+        return v2rayConfig
+    }
+
+    /**
+     * Removes non-essential sections for speedtest use.
+     */
+    private fun postProcessForSpeedtest(v2rayConfig: V2rayConfig) {
         v2rayConfig.log.loglevel = MmkvManager.decodeSettingsString(AppConfig.PREF_LOGLEVEL) ?: "warning"
         v2rayConfig.inbounds.clear()
         v2rayConfig.routing.rules.clear()
@@ -309,15 +302,16 @@ object CoreConfigManager {
         v2rayConfig.fakedns = null
         v2rayConfig.stats = null
         v2rayConfig.policy = null
+        v2rayConfig.outbounds.forEach { key -> key.mux = null }
+    }
 
-        v2rayConfig.outbounds.forEach { key ->
-            key.mux = null
-        }
-
-        result.status = true
-        result.content = JsonUtil.toJsonPretty(v2rayConfig) ?: ""
-        result.guid = guid
-        return result
+    /** Converts a built config object into a unified result payload. */
+    private fun toConfigResult(guid: String, v2rayConfig: V2rayConfig): ConfigResult {
+        return ConfigResult(
+            status = true,
+            guid = guid,
+            content = JsonUtil.toJsonPretty(v2rayConfig) ?: ""
+        )
     }
 
     /**
@@ -798,60 +792,6 @@ object CoreConfigManager {
         } else {
             v2rayConfig.outbounds.add(outbound)
         }
-        return true
-    }
-
-    /**
-     * Configures additional outbound connections for proxy chaining.
-     *
-     * Sets up previous and next proxies in a subscription for advanced routing capabilities.
-     *
-     * @param v2rayConfig The V2ray configuration object to be modified
-     * @param subscriptionId The subscription ID to look up related proxies
-     * @return true if additional outbounds were configured successfully, false otherwise
-     */
-    private fun getMoreOutbounds(v2rayConfig: V2rayConfig, subscriptionId: String): Boolean {
-        //fragment proxy
-        if (MmkvManager.decodeSettingsBool(AppConfig.PREF_FRAGMENT_ENABLED, false) == true) {
-            return false
-        }
-
-        if (subscriptionId.isEmpty()) {
-            return false
-        }
-        try {
-            val subItem = MmkvManager.decodeSubscription(subscriptionId) ?: return false
-
-            //current proxy
-            val outbound = v2rayConfig.outbounds[0]
-
-            //Previous proxy
-            val prevNode = SettingsManager.getServerViaRemarks(subItem.prevProfile)
-            if (prevNode != null) {
-                val prevOutbound = convertProfile2Outbound(prevNode)
-                if (prevOutbound != null) {
-                    prevOutbound.tag = AppConfig.TAG_PROXY + "2"
-                    v2rayConfig.outbounds.add(prevOutbound)
-                    outbound.ensureSockopt().dialerProxy = prevOutbound.tag
-                }
-            }
-
-            //Next proxy
-            val nextNode = SettingsManager.getServerViaRemarks(subItem.nextProfile)
-            if (nextNode != null) {
-                val nextOutbound = convertProfile2Outbound(nextNode)
-                if (nextOutbound != null) {
-                    nextOutbound.tag = AppConfig.TAG_PROXY
-                    v2rayConfig.outbounds.add(0, nextOutbound)
-                    outbound.tag = AppConfig.TAG_PROXY + "1"
-                    nextOutbound.ensureSockopt().dialerProxy = outbound.tag
-                }
-            }
-        } catch (e: Exception) {
-            LogUtil.e(AppConfig.TAG, "Failed to configure more outbounds", e)
-            return false
-        }
-
         return true
     }
 

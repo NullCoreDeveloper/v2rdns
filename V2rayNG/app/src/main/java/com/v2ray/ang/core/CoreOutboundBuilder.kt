@@ -17,17 +17,12 @@ import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.Utils
 
 /**
- * Centralises all ProfileItem → OutboundBean conversion logic.
- *
- * keeping every build method implementation identical to the original
- * toOutbound implementations in each *Fmt class.
+ * Centralizes ProfileItem -> OutboundBean conversion.
+ * Most protocol builders mirror the previous *Fmt.toOutbound behavior.
  */
-object CoreOutboundBuilder  {
+object CoreOutboundBuilder {
 
-    /**
-     * Dispatches [profileItem] to the appropriate protocol builder
-     * and returns the resulting [OutboundBean].
-     */
+    /** Dispatches a profile to protocol-specific outbound builder. */
     fun convert(profileItem: ProfileItem): OutboundBean? {
         val outbound = when (profileItem.configType) {
             EConfigType.VMESS -> toOutboundVmess(profileItem)
@@ -49,11 +44,7 @@ object CoreOutboundBuilder  {
         return outbound
     }
 
-    /**
-     * Updates outbound settings based on global preferences.
-     *
-     * Applies multiplexing and protocol-specific settings to an outbound connection.
-     */
+    /** Applies global outbound options (mux, protocol-specific tweaks, etc.). */
     private fun updateOutboundWithGlobalSettings(outbound: OutboundBean): Boolean {
         try {
             var muxEnabled = MmkvManager.decodeSettingsBool(AppConfig.PREF_MUX_ENABLED, false)
@@ -126,14 +117,7 @@ object CoreOutboundBuilder  {
         return true
     }
 
-    /**
-     * Creates an initial outbound configuration for a specific protocol type.
-     *
-     * Provides a template configuration for different protocol types.
-     *
-     * @param configType The type of configuration to create
-     * @return An initial OutboundBean for the specified configuration type, or null for custom types
-     */
+    /** Creates an initial outbound template for a protocol type. */
     fun createInitOutbound(configType: EConfigType): OutboundBean? {
         return when (configType) {
             EConfigType.VMESS,
