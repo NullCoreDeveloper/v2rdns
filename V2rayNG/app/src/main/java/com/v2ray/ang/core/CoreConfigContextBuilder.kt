@@ -9,6 +9,7 @@ import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.extension.isNotNullEmpty
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SettingsManager
+import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.Utils
 
 /**
@@ -20,38 +21,42 @@ object CoreConfigContextBuilder {
     /** Loads profile by guid and returns a resolved runtime context. */
     fun build(context: Context, guid: String): CoreConfigContext? {
         val config = MmkvManager.decodeServerConfig(guid) ?: return null
-
-        return when (config.configType) {
-            EConfigType.CUSTOM -> CoreConfigContext(
+        if (config.configType == EConfigType.CUSTOM) {
+            return CoreConfigContext(
                 context = context,
                 guid = guid,
                 selectedProfile = config,
                 resolvedProfiles = listOf(config),
                 resolvedType = CoreResolvedType.CUSTOM,
             )
+        }
 
+        // Pre-resolve custom outbound profiles from routing rulesets
+        val customOutbounds = resolveCustomOutbounds()
+
+        // Determine resolved profiles and type based on config type
+        val (resolvedProfiles, resolvedType) = when (config.configType) {
             EConfigType.POLICYGROUP -> {
                 val profiles = resolvePolicyGroupProfiles(config)
-                CoreConfigContext(
-                    context = context,
-                    guid = guid,
-                    selectedProfile = config,
-                    resolvedProfiles = profiles,
-                    resolvedType = CoreResolvedType.POLICYGROUP,
-                )
+                Pair(profiles, CoreResolvedType.POLICYGROUP)
             }
 
             else -> {
                 val chainProfiles = resolveProxyChainProfiles(config)
-                CoreConfigContext(
-                    context = context,
-                    guid = guid,
-                    selectedProfile = config,
-                    resolvedProfiles = chainProfiles,
-                    resolvedType = if (chainProfiles.size <= 1) CoreResolvedType.NORMAL else CoreResolvedType.PROXYCHAIN,
-                )
+                val type = if (chainProfiles.size <= 1) CoreResolvedType.NORMAL else CoreResolvedType.PROXYCHAIN
+                Pair(chainProfiles, type)
             }
         }
+
+        // Create context with common fields
+        return CoreConfigContext(
+            context = context,
+            guid = guid,
+            selectedProfile = config,
+            resolvedProfiles = resolvedProfiles,
+            resolvedType = resolvedType,
+            customOutboundProfiles = customOutbounds,
+        )
     }
 
     /** Resolves policy-group members with the same filters as runtime build. */
@@ -109,6 +114,44 @@ object CoreConfigContextBuilder {
         SettingsManager.getServerViaRemarks(subItem.prevProfile)?.let { resolved.add(it) }
 
         return resolved
+    }
+
+    /**
+     * Resolves custom outbound profiles from routing rulesets.
+     * Scans rulesets for non-builtin outbound tags and looks up matching profiles by remarks.
+     * Returns a map of tag -> ProfileItem for independent processing.
+     */
+    private fun resolveCustomOutbounds(): Map<String, ProfileItem> {
+        val customMap = mutableMapOf<String, ProfileItem>()
+        val rulesetItems = MmkvManager.decodeRoutingRulesets() ?: return customMap
+
+        try {
+            val processedTags = mutableSetOf<String>()
+
+            rulesetItems
+                .filter { it.enabled }
+                .mapNotNull { it.outboundTag.takeIf { tag -> tag.isNotBlank() } }
+                .filter { tag -> tag !in AppConfig.BUILTIN_OUTBOUND_TAGS }
+                .distinct()
+                .forEach { tag ->
+                    if (tag in processedTags) return@forEach
+                    processedTags.add(tag)
+
+                    try {
+                        val profile = SettingsManager.getServerViaRemarks(tag) ?: run {
+                            return@forEach
+                        }
+
+                        customMap[tag] = profile
+                    } catch (e: Exception) {
+                        LogUtil.e(AppConfig.TAG, "Failed to resolve custom outbound for tag '$tag', skipping", e)
+                    }
+                }
+        } catch (e: Exception) {
+            LogUtil.e(AppConfig.TAG, "Failed to resolve custom outbound profiles", e)
+        }
+
+        return customMap
     }
 }
 
