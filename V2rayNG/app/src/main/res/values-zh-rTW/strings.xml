@@ -209,6 +209,7 @@
 
     <string name="title_pref_delay_test_url">真連線延遲測試網址 </string>
     <string name="summary_pref_delay_test_url">Url</string>
+    <string name="title_pref_real_ping_concurrency">真連線延遲測試並發數量</string>
 
     <string name="title_pref_ip_api_url">目前連線資訊測試網址</string>
     <string name="summary_pref_ip_api_url">URL</string>

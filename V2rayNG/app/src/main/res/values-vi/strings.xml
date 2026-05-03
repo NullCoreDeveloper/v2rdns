@@ -211,6 +211,7 @@
 
     <string name="title_pref_delay_test_url">URL kiểm tra độ trễ thực </string>
     <string name="summary_pref_delay_test_url">URL</string>
+    <string name="title_pref_real_ping_concurrency">Số luồng kiểm tra độ trễ thực</string>
 
     <string name="title_pref_ip_api_url">Current connection info test url</string>
     <string name="summary_pref_ip_api_url">Url</string>

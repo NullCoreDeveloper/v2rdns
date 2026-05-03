@@ -208,6 +208,7 @@
 
     <string name="title_pref_delay_test_url">真连接延迟测试网址 </string>
     <string name="summary_pref_delay_test_url">Url</string>
+    <string name="title_pref_real_ping_concurrency">真连接延迟测试并发数量</string>
 
     <string name="title_pref_ip_api_url">当前连接信息测试网址</string>
     <string name="summary_pref_ip_api_url">URL</string>
