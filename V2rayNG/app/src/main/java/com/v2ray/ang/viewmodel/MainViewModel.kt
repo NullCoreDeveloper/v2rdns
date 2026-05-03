@@ -222,7 +222,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             MessageUtil.sendMsg2TestService(
                 getApplication(),
                 TestServiceMessage(
-                    key = AppConfig.MSG_MEASURE_CONFIG,
+                    key = AppConfig.MSG_MEASURE_CONFIG_START,
                     subscriptionId = subscriptionId,
                     serverGuids = if (keywordFilter.isNotEmpty()) serversCache.map { it.guid } else emptyList()
                 )

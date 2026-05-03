@@ -23,6 +23,7 @@ import java.util.concurrent.atomic.AtomicInteger
 class RealPingWorkerService(
     private val context: Context,
     private val guids: List<String>,
+    private val onProgress: (progress: String) -> Unit = {},
     private val onFinish: (status: String) -> Unit = {}
 ) {
     private val job = SupervisorJob()
@@ -46,7 +47,7 @@ class RealPingWorkerService(
                 } finally {
                     val count = totalCount.decrementAndGet()
                     val left = runningCount.decrementAndGet()
-                    MessageUtil.sendMsg2UI(context, AppConfig.MSG_MEASURE_CONFIG_NOTIFY, "$left / $count")
+                    onProgress("$left / $count")
                 }
             }
         }
