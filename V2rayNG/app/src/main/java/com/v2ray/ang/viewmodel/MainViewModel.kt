@@ -470,9 +470,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 AppConfig.MSG_MEASURE_CONFIG_SUCCESS -> {
-                    val resultPair = intent.serializable<Pair<String, Long>>("content") ?: return
-                    MmkvManager.encodeServerTestDelayMillis(resultPair.first, resultPair.second)
-                    updateListAction.value = getPosition(resultPair.first)
+                    val content = intent.getStringExtra("content")
+                    updateListAction.value = getPosition(content?: "")
                 }
 
                 AppConfig.MSG_MEASURE_CONFIG_NOTIFY -> {
