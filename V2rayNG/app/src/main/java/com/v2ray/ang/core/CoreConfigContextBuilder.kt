@@ -120,6 +120,7 @@ object CoreConfigContextBuilder {
                 .filter { it.configType != EConfigType.POLICYGROUP }
                 .filter { it.configType != EConfigType.PROXYCHAIN }
                 .toList()
+                .reversed()
         }
         catch (e: Exception) {
             LogUtil.e(AppConfig.TAG, "Failed to resolve proxy chain profiles for config '${config.remarks}'", e)
