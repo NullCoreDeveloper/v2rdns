@@ -1,6 +1,5 @@
 package com.v2ray.ang.core
 
-import android.text.TextUtils
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.v2ray.ang.AppConfig
@@ -84,29 +83,6 @@ object CoreOutboundBuilder {
                 }
                 outbound.settings?.address = localTunAddr
             }
-
-            if (outbound.streamSettings?.network == AppConfig.DEFAULT_NETWORK
-                && outbound.streamSettings?.tcpSettings?.header?.type == AppConfig.HEADER_TYPE_HTTP
-            ) {
-                val path = outbound.streamSettings?.tcpSettings?.header?.request?.path
-                val host = outbound.streamSettings?.tcpSettings?.header?.request?.headers?.Host
-
-                val requestString: String by lazy {
-                    """{"version":"1.1","method":"GET","headers":{"User-Agent":["Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6478.122 Mobile Safari/537.36"],"Accept-Encoding":["gzip, deflate"],"Connection":["keep-alive"],"Pragma":["no-cache"]}}"""
-                }
-                outbound.streamSettings?.tcpSettings?.header?.request = JsonUtil.fromJson(
-                    requestString,
-                    OutboundBean.StreamSettingsBean.TcpSettingsBean.HeaderBean.RequestBean::class.java
-                )
-                outbound.streamSettings?.tcpSettings?.header?.request?.path =
-                    if (path.isNullOrEmpty()) {
-                        listOf("/")
-                    } else {
-                        path
-                    }
-                outbound.streamSettings?.tcpSettings?.header?.request?.headers?.Host = host
-            }
-
 
         } catch (e: Exception) {
             LogUtil.e(AppConfig.TAG, "Failed to update outbound with global settings", e)
@@ -328,6 +304,23 @@ object CoreOutboundBuilder {
         return outboundBean
     }
 
+    private fun createTcpHttpRequest(
+        host: String?,
+        path: String?
+    ): OutboundBean.StreamSettingsBean.TcpSettingsBean.HeaderBean.RequestBean {
+        val requestString =
+            """{"version":"1.1","method":"GET","headers":{"User-Agent":["Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6478.122 Mobile Safari/537.36"],"Accept-Encoding":["gzip, deflate"],"Connection":["keep-alive"],"Pragma":"no-cache"}}"""
+        val request = JsonUtil.fromJson(
+            requestString,
+            OutboundBean.StreamSettingsBean.TcpSettingsBean.HeaderBean.RequestBean::class.java
+        ) ?: OutboundBean.StreamSettingsBean.TcpSettingsBean.HeaderBean.RequestBean()
+
+        val parsedHost = host.orEmpty().split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        request.headers.Host = parsedHost.ifEmpty { null }
+        request.path = path.orEmpty().split(",").map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty { listOf("/") }
+        return request
+    }
+
     /**
      * Configures transport settings for an outbound connection.
      *
@@ -358,13 +351,9 @@ object CoreOutboundBuilder {
                 val tcpSetting = OutboundBean.StreamSettingsBean.TcpSettingsBean()
                 if (headerType == AppConfig.HEADER_TYPE_HTTP) {
                     tcpSetting.header.type = AppConfig.HEADER_TYPE_HTTP
-                    if (!TextUtils.isEmpty(host) || !TextUtils.isEmpty(path)) {
-                        val requestObj = OutboundBean.StreamSettingsBean.TcpSettingsBean.HeaderBean.RequestBean()
-                        requestObj.headers.Host = host.orEmpty().split(",").map { it.trim() }.filter { it.isNotEmpty() }
-                        requestObj.path = path.orEmpty().split(",").map { it.trim() }.filter { it.isNotEmpty() }
-                        tcpSetting.header.request = requestObj
-                        sni = requestObj.headers.Host?.getOrNull(0)
-                    }
+                    val requestObj = createTcpHttpRequest(host, path)
+                    tcpSetting.header.request = requestObj
+                    sni = requestObj.headers.Host?.getOrNull(0)
                 } else {
                     tcpSetting.header.type = "none"
                     sni = host
