@@ -97,8 +97,7 @@ object CoreConfigContextBuilder {
                 .filter { it.configType != EConfigType.POLICYGROUP }
                 .filter { it.configType != EConfigType.PROXYCHAIN }
                 .toList()
-        }
-        catch (e: Exception) {
+        } catch (e: Exception) {
             LogUtil.e(AppConfig.TAG, "Failed to resolve policy group profiles for config '${config.remarks}'", e)
             return listOf(config)
         }
@@ -121,8 +120,7 @@ object CoreConfigContextBuilder {
                 .filter { it.configType != EConfigType.PROXYCHAIN }
                 .toList()
                 .reversed()
-        }
-        catch (e: Exception) {
+        } catch (e: Exception) {
             LogUtil.e(AppConfig.TAG, "Failed to resolve proxy chain profiles for config '${config.remarks}'", e)
             return listOf(config)
         }
