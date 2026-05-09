@@ -72,18 +72,6 @@ object CoreOutboundBuilder {
                 outbound.mux?.concurrency = -1
             }
 
-            if (protocol.equals(EConfigType.WIREGUARD.name, true)) {
-                var localTunAddr = if (outbound.settings?.address == null) {
-                    listOf(AppConfig.WIREGUARD_LOCAL_ADDRESS_V4)
-                } else {
-                    outbound.settings?.address as List<*>
-                }
-                if (MmkvManager.decodeSettingsBool(AppConfig.PREF_IPV6_ENABLED) != true) {
-                    localTunAddr = listOf(localTunAddr.first())
-                }
-                outbound.settings?.address = localTunAddr
-            }
-
         } catch (e: Exception) {
             LogUtil.e(AppConfig.TAG, "Failed to update outbound with global settings", e)
             return false
@@ -267,9 +255,23 @@ object CoreOutboundBuilder {
     private fun toOutboundWireguard(profileItem: ProfileItem): OutboundBean? {
         val outboundBean = createInitOutbound(EConfigType.WIREGUARD)
 
+        val rawAddresses = profileItem.localAddress
+            ?.split(",")
+            ?.map { it.trim() }
+            ?.filter { it.isNotEmpty() }
+            ?.ifEmpty { null }
+            ?: listOf(AppConfig.WIREGUARD_LOCAL_ADDRESS_V4)
+
+        val addresses = if (MmkvManager.decodeSettingsBool(AppConfig.PREF_IPV6_ENABLED) == true) {
+            rawAddresses
+        } else {
+            val ipv4Addresses = rawAddresses.filter { !it.contains(":") }
+            ipv4Addresses.ifEmpty { listOf(AppConfig.WIREGUARD_LOCAL_ADDRESS_V4) }
+        }
+
         outboundBean?.settings?.let { wireguard ->
             wireguard.secretKey = profileItem.secretKey
-            wireguard.address = (profileItem.localAddress ?: AppConfig.WIREGUARD_LOCAL_ADDRESS_V4).split(",")
+            wireguard.address = addresses
             wireguard.peers?.firstOrNull()?.let { peer ->
                 peer.publicKey = profileItem.publicKey.orEmpty()
                 peer.preSharedKey = profileItem.preSharedKey?.nullIfBlank()
