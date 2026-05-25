@@ -178,6 +178,7 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>(),
     private fun editServer(guid: String, profile: ProfileItem) {
         val activityClass = when (profile.configType) {
             EConfigType.CUSTOM -> ServerCustomConfigActivity::class.java
+            EConfigType.MDNS -> ServerCustomConfigActivity::class.java
             EConfigType.POLICYGROUP -> ServerGroupActivity::class.java
             EConfigType.PROXYCHAIN -> ServerProxyChainActivity::class.java
             else -> ServerActivity::class.java
