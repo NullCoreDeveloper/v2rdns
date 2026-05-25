@@ -255,6 +255,7 @@ object CoreServiceManager {
             if (!libv2ray.Libv2ray.isMdnsClientRunning()) {
                 error("MasterDNSVPN client failed to start")
             }
+            NotificationManager.showNotification(currentConfig)
         } else {
             val result = CoreConfigManager.getV2rayConfig(service, guid)
             LogUtil.d(AppConfig.TAG, result.content)
