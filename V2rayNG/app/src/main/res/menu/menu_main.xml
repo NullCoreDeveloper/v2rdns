@@ -64,6 +64,10 @@
                 android:id="@+id/import_manually_hysteria2"
                 android:title="@string/menu_item_import_config_manually_hysteria2"
                 app:showAsAction="never" />
+            <item
+                android:id="@+id/import_manually_mdns"
+                android:title="@string/menu_item_import_config_manually_mdns"
+                app:showAsAction="never" />
         </menu>
     </item>
     <item

@@ -24,6 +24,7 @@ import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
 import com.v2ray.ang.core.CoreServiceManager
 import com.v2ray.ang.databinding.ActivityMainBinding
+import com.v2ray.ang.dto.entities.ProfileItem
 import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.enums.PermissionType
 import com.v2ray.ang.extension.toast
@@ -299,6 +300,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             true
         }
 
+        R.id.import_manually_mdns -> {
+            importManually(EConfigType.MDNS.value)
+            true
+        }
+
         R.id.export_all -> {
             exportAll()
             true
@@ -366,6 +372,31 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 Intent()
                     .putExtra("subscriptionId", mainViewModel.subscriptionId)
                     .setClass(this, ServerProxyChainActivity::class.java)
+            )
+        } else if (createConfigType == EConfigType.MDNS.value) {
+            val guid = Utils.getUuid()
+            val initialJson = """{
+  "LISTEN_PORT": 10808,
+  "RESOLVERS": [
+    {
+      "ADDRESS": "127.0.0.1:53"
+    }
+  ]
+}"""
+            val profile = ProfileItem.create(EConfigType.MDNS)
+            profile.remarks = "MasterDNSVPN"
+            profile.server = "127.0.0.1"
+            profile.serverPort = "10808"
+            profile.subscriptionId = mainViewModel.subscriptionId
+            MmkvManager.encodeServerConfig(guid, profile)
+            MmkvManager.encodeServerRaw(guid, initialJson)
+
+            startActivity(
+                Intent()
+                    .putExtra("guid", guid)
+                    .putExtra("isRunning", mainViewModel.isRunning.value)
+                    .putExtra("subscriptionId", mainViewModel.subscriptionId)
+                    .setClass(this, ServerCustomConfigActivity::class.java)
             )
         } else {
             startActivity(
