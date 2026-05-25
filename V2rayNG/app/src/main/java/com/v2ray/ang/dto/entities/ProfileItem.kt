@@ -68,6 +68,7 @@ data class ProfileItem(
     var proxyChainProfiles: String? = null,
 
     var browserDialerMode: String? = null,
+    var mdnsRawConfig: String? = null,
 
     ) {
     companion object {
