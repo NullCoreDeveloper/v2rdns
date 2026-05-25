@@ -648,6 +648,19 @@ object AngConfigManager {
      * @return The generated description.
      */
     fun generateDescription(profile: ProfileItem): String {
+        if (profile.configType == EConfigType.MDNS) {
+            try {
+                val jsonObject = com.google.gson.JsonParser.parseString(profile.mdnsRawConfig.orEmpty()).asJsonObject
+                val domains = jsonObject.getAsJsonArray("DOMAINS")
+                if (domains != null && domains.size() > 0) {
+                    return domains.get(0).asString
+                }
+            } catch (e: Exception) {
+                // Ignore, fallback
+            }
+            return "MasterDNSVPN"
+        }
+
         // Hide xxx:xxx:***/xxx.xxx.xxx.***
         val server = profile.server
         val port = profile.serverPort
