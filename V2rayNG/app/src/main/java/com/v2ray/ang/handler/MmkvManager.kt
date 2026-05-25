@@ -144,7 +144,11 @@ object MmkvManager {
         if (json.isNullOrBlank()) {
             return null
         }
-        return JsonUtil.fromJsonSafe(json, ProfileItem::class.java)
+        val config = JsonUtil.fromJsonSafe(json, ProfileItem::class.java)
+        if (config?.configType == EConfigType.MDNS) {
+            config.mdnsRawConfig = decodeServerRaw(guid)
+        }
+        return config
     }
 
 
