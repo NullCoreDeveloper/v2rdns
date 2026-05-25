@@ -91,6 +91,8 @@ object NotificationManager {
                 ""
             }
 
+        LogUtil.i(AppConfig.TAG, "NotificationManager: showNotification called. Config is null: ${currentConfig == null}, configType: ${currentConfig?.configType}, remarks: ${currentConfig?.remarks}")
+
         val contentText = if (currentConfig?.configType == com.v2ray.ang.enums.EConfigType.MDNS) {
             service.getString(R.string.notification_mdns_active)
         } else {
@@ -99,7 +101,7 @@ object NotificationManager {
 
         mBuilder = NotificationCompat.Builder(service, channelId)
             .setSmallIcon(R.drawable.ic_stat_name)
-            .setContentTitle(currentConfig?.remarks)
+            .setContentTitle(currentConfig?.remarks ?: "MasterDNSVPN (remarks null)")
             .setContentText(contentText)
             .setPriority(NotificationCompat.PRIORITY_MIN)
             .setOngoing(true)

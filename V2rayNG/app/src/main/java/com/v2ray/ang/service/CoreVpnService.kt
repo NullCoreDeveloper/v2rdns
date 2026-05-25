@@ -29,6 +29,11 @@ import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.MyContextWrapper
 import com.v2ray.ang.util.Utils
 import java.lang.ref.SoftReference
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @SuppressLint("VpnServicePolicy")
 class CoreVpnService : VpnService(), ServiceControl {
@@ -347,7 +352,35 @@ class CoreVpnService : VpnService(), ServiceControl {
             tun2SocksService = null
         }
 
-        tun2SocksService?.startTun2Socks()
+        if (isMdns) {
+            CoroutineScope(Dispatchers.IO).launch {
+                val socksPort = SettingsManager.getSocksPort().toInt()
+                LogUtil.i(AppConfig.TAG, "StartCore-VPN: Waiting for SOCKS5 port $socksPort to open...")
+                var portOpen = false
+                for (i in 0..120) { // wait up to 60 seconds
+                    try {
+                        java.net.Socket().use { socket ->
+                            socket.connect(java.net.InetSocketAddress("127.0.0.1", socksPort), 500)
+                            portOpen = true
+                        }
+                    } catch (e: Exception) {
+                        // ignored, not open yet
+                    }
+                    if (portOpen) break
+                    delay(500)
+                }
+                if (portOpen) {
+                    LogUtil.i(AppConfig.TAG, "StartCore-VPN: SOCKS5 port $socksPort is open! Starting Tun2Socks...")
+                    withContext(Dispatchers.Main) {
+                        tun2SocksService?.startTun2Socks()
+                    }
+                } else {
+                    LogUtil.e(AppConfig.TAG, "StartCore-VPN: SOCKS5 port $socksPort failed to open after 60s!")
+                }
+            }
+        } else {
+            tun2SocksService?.startTun2Socks()
+        }
     }
 
     private fun stopAllService(isForced: Boolean = true) {
