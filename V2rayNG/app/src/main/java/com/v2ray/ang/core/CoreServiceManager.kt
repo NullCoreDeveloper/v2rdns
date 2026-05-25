@@ -237,10 +237,21 @@ object CoreServiceManager {
         currentConfig = config
 
         if (config.configType == EConfigType.MDNS) {
-            val mdnsConfig = MmkvManager.decodeServerRaw(guid) ?: error("MasterDNSVPN config is empty")
-            val socksPort = SettingsManager.getSocksPort()
+            var mdnsConfig = MmkvManager.decodeServerRaw(guid) ?: error("MasterDNSVPN config is empty")
+            val socksPort = SettingsManager.getSocksPort().toInt()
+            try {
+                val jsonObject = com.google.gson.JsonParser.parseString(mdnsConfig).asJsonObject
+                jsonObject.addProperty("LISTEN_PORT", socksPort)
+                mdnsConfig = jsonObject.toString()
+            } catch (e: Exception) {
+                LogUtil.e(AppConfig.TAG, "Failed to parse/update LISTEN_PORT in MasterDNSVPN config", e)
+            }
             LogUtil.i(AppConfig.TAG, "StartCore-Manager: Starting MasterDNSVPN client on port $socksPort")
-            libv2ray.Libv2ray.startMdnsClient(mdnsConfig, socksPort.toLong())
+            val mdnsConfigBase64 = android.util.Base64.encodeToString(
+                mdnsConfig.toByteArray(Charsets.UTF_8),
+                android.util.Base64.NO_WRAP
+            )
+            libv2ray.Libv2ray.startMdnsClient(mdnsConfigBase64, "")
             if (!libv2ray.Libv2ray.isMdnsClientRunning()) {
                 error("MasterDNSVPN client failed to start")
             }
