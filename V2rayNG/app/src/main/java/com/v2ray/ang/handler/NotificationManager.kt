@@ -91,7 +91,7 @@ object NotificationManager {
                 ""
             }
 
-        val contentText = if (currentConfig?.configType == com.v2ray.ang.dto.entities.EConfigType.MDNS) {
+        val contentText = if (currentConfig?.configType == com.v2ray.ang.enums.EConfigType.MDNS) {
             service.getString(R.string.notification_mdns_active)
         } else {
             service.getString(R.string.notification_action_more)
