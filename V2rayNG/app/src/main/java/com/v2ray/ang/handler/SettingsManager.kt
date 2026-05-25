@@ -336,23 +336,28 @@ object SettingsManager {
      */
     fun initAssets(context: Context, assets: AssetManager) {
         val extFolder = Utils.userAssetPath(context)
+        if (extFolder.isEmpty()) return
 
-        try {
-            val geo = arrayOf(AppConfig.GEOSITE_DAT, AppConfig.GEOIP_DAT, AppConfig.GEOIP_ONLY_CN_PRIVATE_DAT)
-            assets.list("")
-                ?.filter { geo.contains(it) }
-                ?.filter { !File(extFolder, it).exists() }
-                ?.forEach {
-                    val target = File(extFolder, it)
-                    assets.open(it).use { input ->
+        val extFolderDir = File(extFolder)
+        if (!extFolderDir.exists()) {
+            extFolderDir.mkdirs()
+        }
+
+        val geo = arrayOf(AppConfig.GEOSITE_DAT, AppConfig.GEOIP_DAT, AppConfig.GEOIP_ONLY_CN_PRIVATE_DAT)
+        geo.forEach { fileName ->
+            val target = File(extFolderDir, fileName)
+            if (!target.exists()) {
+                try {
+                    assets.open(fileName).use { input ->
                         FileOutputStream(target).use { output ->
                             input.copyTo(output)
                         }
                     }
                     LogUtil.i(AppConfig.TAG, "Copied from apk assets folder to ${target.absolutePath}")
+                } catch (e: Exception) {
+                    LogUtil.e(AppConfig.TAG, "Failed to copy asset $fileName from APK", e)
                 }
-        } catch (e: Exception) {
-            LogUtil.e(ANG_PACKAGE, "asset copy failed", e)
+            }
         }
     }
 
