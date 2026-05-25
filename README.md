@@ -1,32 +1,80 @@
-# v2rayNG
+# v2dns (v2rayNG с интеграцией MasterDnsVPN)
 
-A V2Ray client for Android, support [Xray core](https://github.com/XTLS/Xray-core) and [v2fly core](https://github.com/v2fly/v2ray-core)
+**v2dns** — это специализированный форк популярного Android-клиента v2rayNG с глубокой интеграцией сверхзащищенного и быстрого протокола DNS-туннелирования **MasterDnsVPN** и удобным импортом конфигураций через компактные ссылки `mdns://`.
 
-[![API](https://img.shields.io/badge/API-24%2B-yellow.svg?style=flat)](https://developer.android.com/about/versions/lollipop)
-[![Kotlin Version](https://img.shields.io/badge/Kotlin-2.3.0-blue.svg)](https://kotlinlang.org)
-[![GitHub commit activity](https://img.shields.io/github/commit-activity/m/2dust/v2rayNG)](https://github.com/2dust/v2rayNG/commits/master)
-[![CodeFactor](https://www.codefactor.io/repository/github/2dust/v2rayng/badge)](https://www.codefactor.io/repository/github/2dust/v2rayng)
-[![GitHub Releases](https://img.shields.io/github/downloads/2dust/v2rayNG/latest/total?logo=github)](https://github.com/2dust/v2rayNG/releases)
-[![Chat on Telegram](https://img.shields.io/badge/Chat%20on-Telegram-brightgreen.svg)](https://t.me/v2rayn)
+Этот клиент позволяет обходить самые жесткие блокировки с помощью DNS-туннелирования, шифрования трафика и динамического обхода цензуры.
 
-### Telegram Channel
-[github_2dust](https://t.me/github_2dust)
+---
 
-### Usage
+## 🚀 Основные особенности
 
-#### Geoip and Geosite
-- geoip.dat and geosite.dat files are in `Android/data/com.v2ray.ang/files/assets` (path may differ on some Android device)
-- download feature will get enhanced version in this [repo](https://github.com/Loyalsoldier/v2ray-rules-dat) (Note it need a working proxy)
-- latest official [domain list](https://github.com/Loyalsoldier/v2ray-rules-dat) and [ip list](https://github.com/Loyalsoldier/geoip) can be imported manually
-- possible to use third party dat file in the same folder, like [h2y](https://guide.v2fly.org/routing/sitedata.html#%E5%A4%96%E7%BD%AE%E7%9A%84%E5%9F%9F%E5%90%8D%E6%96%87%E4%BB%B6)
+* **Полная интеграция MasterDnsVPN**: Поддержка современного, высокоскоростного DNS-туннелирования.
+* **Импорт в одно нажатие (`mdns://`)**: Поддержка импорта настроек с помощью ссылок вида `mdns://[Base64 от JSON-конфига]` (включая сканирование QR-кодов и буфер обмена).
+* **Автоматическое обновление подписок**: Интеграция с панелью 3x-ui для динамического получения новых конфигураций.
+* **Поддержка Xray-core и v2fly-core**: Совместимость со всеми стандартными протоколами (VLESS, VMess, Trojan, Shadowsocks).
 
-### More in our [wiki](https://github.com/2dust/v2rayNG/wiki)
+---
 
-### Development guide
+## 📦 Сборка через GitHub Actions (CI/CD)
 
-Android project under V2rayNG folder can be compiled directly in Android Studio, or using Gradle wrapper. But the v2ray core inside the aar is (probably) outdated.  
-The aar can be compiled from the Golang project [AndroidLibV2rayLite](https://github.com/2dust/AndroidLibV2rayLite) or [AndroidLibXrayLite](https://github.com/2dust/AndroidLibXrayLite).
-For a quick start, read guide for [Go Mobile](https://github.com/golang/go/wiki/Mobile) and [Makefiles for Go Developers](https://tutorialedge.net/golang/makefiles-for-go-developers/)
+В репозитории полностью настроен автоматический пайплайн сборки Android APK с использованием GitHub Actions. Вы можете собирать готовые релизные и отладочные версии приложения без необходимости локальной установки Android Studio и NDK.
 
-v2rayNG can run on Android Emulators. For WSA, VPN permission need to be granted via
-`appops set [package name] ACTIVATE_VPN allow`
+### Настройка репозитория для сборки
+
+Для того чтобы GitHub Actions мог подписывать релизные сборки APK, добавьте следующие секреты в настройках вашего GitHub-репозитория (**Settings -> Secrets and variables -> Actions -> New repository secret**):
+
+1. `APP_KEYSTORE_BASE64` — Ваш файл хранилища ключей Android (`.jks` / `.keystore`), закодированный в Base64.
+   * *Как получить:* `base64 -w 0 your_keystore.jks`
+2. `APP_KEYSTORE_PASSWORD` — Пароль от хранилища ключей (`keystore`).
+3. `APP_KEYSTORE_ALIAS` — Алиас (имя) ключа подписи в хранилище.
+4. `APP_KEY_PASSWORD` — Пароль от самого ключа подписи.
+
+### Запуск сборки
+
+1. Перейдите во вкладку **Actions** вашего репозитория на GitHub.
+2. Выберите рабочий процесс **Build APK** в левой панели.
+3. Нажмите кнопку **Run workflow** справа.
+4. (Опционально) Укажите `release_tag` (например, `v1.0.0`), если вы хотите автоматически прикрепить собранные APK к новому релизу GitHub.
+5. Нажмите **Run workflow**.
+
+После успешного завершения сборки во вкладке запуска появятся готовые артефакты:
+* APK-файлы для различных архитектур (`arm64-v8a`, `armeabi-v7a`, `x86`).
+* Релизная версия приложения с автоподписью.
+
+---
+
+## 🛠️ Локальная сборка
+
+Если вам нужно собрать проект локально:
+
+1. Установите **Go 1.25+** и настройте **Go Mobile** для сборки aar-библиотеки:
+   ```bash
+   cd AndroidLibXrayLite
+   go build
+   ```
+2. Откройте директорию `V2rayNG` в **Android Studio**.
+3. Убедитесь, что у вас установлены Android SDK 36 и NDK `28.2.13676358`.
+4. Соберите проект через Gradle:
+   ```bash
+   cd V2rayNG
+   ./gradlew assembleRelease
+   ```
+
+---
+
+## ⚙️ Формат ссылок `mdns://`
+
+Приложение принимает конфигурации в закодированном виде. 
+Формат ссылки:
+```
+mdns://<BASE64_ENCODED_JSON_CONFIG>#Remark
+```
+
+**Пример исходного JSON-конфига:**
+```json
+{
+  "server": "user1.vpn.example.com",
+  "key": "your-uuid-here"
+}
+```
+После кодирования в Base64 формируется ссылка, которую можно превратить в QR-код или скопировать в буфер обмена для мгновенного импорта.
