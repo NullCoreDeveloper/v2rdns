@@ -21,6 +21,7 @@ import com.v2ray.ang.BuildConfig
 import com.v2ray.ang.contracts.ServiceControl
 import com.v2ray.ang.contracts.Tun2SocksControl
 import com.v2ray.ang.core.CoreServiceManager
+import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.NotificationManager
 import com.v2ray.ang.handler.SettingsManager
@@ -331,7 +332,11 @@ class CoreVpnService : VpnService(), ServiceControl {
      * Starts the tun2socks process with the appropriate parameters.
      */
     private fun runTun2socks() {
-        if (SettingsManager.isUsingHevTun()) {
+        val guid = MmkvManager.getSelectServer()
+        val config = guid?.let { MmkvManager.decodeServerConfig(it) }
+        val isMdns = config?.configType == EConfigType.MDNS
+
+        if (SettingsManager.isUsingHevTun() || isMdns) {
             tun2SocksService = TProxyService(
                 context = applicationContext,
                 vpnInterface = mInterface,
