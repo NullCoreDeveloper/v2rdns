@@ -107,11 +107,12 @@ object CoreServiceManager {
         MessageUtil.sendMsg2Service(context, AppConfig.MSG_STATE_STOP, "")
     }
 
-    /**
-     * Checks if the V2Ray service is running.
-     * @return True if the service is running, false otherwise.
-     */
-    fun isRunning() = coreController.isRunning
+    fun isRunning(): Boolean {
+        if (currentConfig?.configType == EConfigType.MDNS) {
+            return libv2ray.Libv2ray.isMdnsClientRunning()
+        }
+        return coreController.isRunning
+    }
 
     /**
      * Gets the name of the currently running server.
@@ -226,11 +227,6 @@ object CoreServiceManager {
         val config = MmkvManager.decodeServerConfig(guid) ?: error("Failed to decode server config")
 
         LogUtil.i(AppConfig.TAG, "StartCore-Manager: Starting core loop for ${config.remarks}")
-        val result = CoreConfigManager.getV2rayConfig(service, guid)
-        LogUtil.d(AppConfig.TAG, result.content)
-        if (!result.status) {
-            error(result.errorMessage.ifBlank { "Failed to get V2Ray config" })
-        }
 
         val mFilter = IntentFilter(AppConfig.BROADCAST_ACTION_SERVICE)
         mFilter.addAction(Intent.ACTION_SCREEN_ON)
@@ -239,34 +235,51 @@ object CoreServiceManager {
         ContextCompat.registerReceiver(service, mMsgReceive, mFilter, Utils.receiverFlags())
 
         currentConfig = config
-        var tunFd = vpnInterface?.fd ?: 0
-        val dialerAddr = if (currentConfig?.browserDialerMode.isNullOrEmpty()) {
-            ""
+
+        if (config.configType == EConfigType.MDNS) {
+            val mdnsConfig = MmkvManager.decodeServerRaw(guid) ?: error("MasterDNSVPN config is empty")
+            val socksPort = SettingsManager.getSocksPort()
+            LogUtil.i(AppConfig.TAG, "StartCore-Manager: Starting MasterDNSVPN client on port $socksPort")
+            libv2ray.Libv2ray.startMdnsClient(mdnsConfig, socksPort.toLong())
+            if (!libv2ray.Libv2ray.isMdnsClientRunning()) {
+                error("MasterDNSVPN client failed to start")
+            }
         } else {
-            "127.0.0.1:${Utils.findRandomFreePort()}"
-        }
-        if (SettingsManager.isUsingHevTun()) {
-            tunFd = 0
-        }
+            val result = CoreConfigManager.getV2rayConfig(service, guid)
+            LogUtil.d(AppConfig.TAG, result.content)
+            if (!result.status) {
+                error(result.errorMessage.ifBlank { "Failed to get V2Ray config" })
+            }
 
-        NotificationManager.showNotification(currentConfig)
-        CoreNativeManager.reconcileBrowserDialer(dialerAddr)
-        coreController.startLoop(result.content, tunFd)
+            var tunFd = vpnInterface?.fd ?: 0
+            val dialerAddr = if (currentConfig?.browserDialerMode.isNullOrEmpty()) {
+                ""
+            } else {
+                "127.0.0.1:${Utils.findRandomFreePort()}"
+            }
+            if (SettingsManager.isUsingHevTun()) {
+                tunFd = 0
+            }
 
-        if (!coreController.isRunning) {
-            error("Core failed to start")
-        }
+            NotificationManager.showNotification(currentConfig)
+            CoreNativeManager.reconcileBrowserDialer(dialerAddr)
+            coreController.startLoop(result.content, tunFd)
 
-        if (browserDialer != null) {
-            browserDialer!!.stop()
-            browserDialer = null
-        }
-        if (config.browserDialerMode == "OkHttp") {
-            browserDialer = DialerNativeService()
-            browserDialer!!.start(service, dialerAddr)
-        } else if (config.browserDialerMode == "WebView") {
-            browserDialer = DialerWebviewService()
-            browserDialer!!.start(service, dialerAddr)
+            if (!coreController.isRunning) {
+                error("Core failed to start")
+            }
+
+            if (browserDialer != null) {
+                browserDialer!!.stop()
+                browserDialer = null
+            }
+            if (config.browserDialerMode == "OkHttp") {
+                browserDialer = DialerNativeService()
+                browserDialer!!.start(service, dialerAddr)
+            } else if (config.browserDialerMode == "WebView") {
+                browserDialer = DialerWebviewService()
+                browserDialer!!.start(service, dialerAddr)
+            }
         }
 
         MessageUtil.sendMsg2UI(service, AppConfig.MSG_STATE_START_SUCCESS, "")
@@ -282,21 +295,30 @@ object CoreServiceManager {
     fun stopCoreLoop(): Boolean {
         val service = getService() ?: return false
 
-        if (coreController.isRunning) {
-            CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    coreController.stopLoop()
-                } catch (e: Exception) {
-                    LogUtil.e(AppConfig.TAG, "StartCore-Manager: Failed to stop V2Ray loop", e)
+        if (currentConfig?.configType == EConfigType.MDNS) {
+            LogUtil.i(AppConfig.TAG, "StartCore-Manager: Stopping MasterDNSVPN client")
+            try {
+                libv2ray.Libv2ray.stopMdnsClient()
+            } catch (e: Exception) {
+                LogUtil.e(AppConfig.TAG, "StartCore-Manager: Failed to stop MasterDNSVPN client", e)
+            }
+        } else {
+            if (coreController.isRunning) {
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        coreController.stopLoop()
+                    } catch (e: Exception) {
+                        LogUtil.e(AppConfig.TAG, "StartCore-Manager: Failed to stop V2Ray loop", e)
+                    }
                 }
             }
-        }
 
-        // Close existing browser dialer
-        CoreNativeManager.reconcileBrowserDialer("")
-        if (browserDialer != null) {
-            browserDialer!!.stop()
-            browserDialer = null
+            // Close existing browser dialer
+            CoreNativeManager.reconcileBrowserDialer("")
+            if (browserDialer != null) {
+                browserDialer!!.stop()
+                browserDialer = null
+            }
         }
 
         MessageUtil.sendMsg2UI(service, AppConfig.MSG_STATE_STOP_SUCCESS, "")
