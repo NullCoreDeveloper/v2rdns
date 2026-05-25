@@ -14,6 +14,7 @@ import com.v2ray.ang.dto.entities.SubscriptionItem
 import com.v2ray.ang.dto.entities.WebDavConfig
 import com.v2ray.ang.util.JsonUtil
 import com.v2ray.ang.util.Utils
+import com.v2ray.ang.enums.EConfigType
 
 object MmkvManager {
 
