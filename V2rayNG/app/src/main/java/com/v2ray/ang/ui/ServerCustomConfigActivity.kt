@@ -80,9 +80,17 @@ class ServerCustomConfigActivity : BaseActivity() {
 
         if (isMdns) {
             try {
-                com.google.gson.JsonParser.parseString(binding.editor.text.toString())
+                val json = com.google.gson.JsonParser.parseString(binding.editor.text.toString()).asJsonObject
+                if (!json.has("DOMAINS") || json.getAsJsonArray("DOMAINS") == null || json.getAsJsonArray("DOMAINS").size() == 0) {
+                    toast("Укажите DOMAINS в JSON конфигурации (например: \"DOMAINS\": [\"user.domain.com\"])")
+                    return false
+                }
+                if (!json.has("ENCRYPTION_KEY") || json.get("ENCRYPTION_KEY").asString.isNullOrEmpty()) {
+                    toast("Укажите ENCRYPTION_KEY в JSON конфигурации (UUID клиента)")
+                    return false
+                }
             } catch (e: Exception) {
-                toast("Invalid JSON configuration")
+                toast("Некорректный JSON конфиг: ${e.message}")
                 return false
             }
             binding.etRemarks.text.let {
