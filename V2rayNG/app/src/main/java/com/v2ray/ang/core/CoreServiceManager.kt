@@ -308,10 +308,12 @@ object CoreServiceManager {
 
         if (currentConfig?.configType == EConfigType.MDNS) {
             LogUtil.i(AppConfig.TAG, "StartCore-Manager: Stopping MasterDNSVPN client")
-            try {
-                libv2ray.Libv2ray.stopMdnsClient()
-            } catch (e: Exception) {
-                LogUtil.e(AppConfig.TAG, "StartCore-Manager: Failed to stop MasterDNSVPN client", e)
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    libv2ray.Libv2ray.stopMdnsClient()
+                } catch (e: Exception) {
+                    LogUtil.e(AppConfig.TAG, "StartCore-Manager: Failed to stop MasterDNSVPN client", e)
+                }
             }
         } else {
             if (coreController.isRunning) {
