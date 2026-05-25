@@ -15,6 +15,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
     - name: Checkout code
@@ -129,6 +131,7 @@ jobs:
       uses: svenstaro/upload-release-action@v2
       if: steps.get_tag.outputs.TAG != ''
       with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
         file: ${{ github.workspace }}/V2rayNG/app/build/outputs/apk/*/release/*.apk
         tag: ${{ steps.get_tag.outputs.TAG }}
         file_glob: true
