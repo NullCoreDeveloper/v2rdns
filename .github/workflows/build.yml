@@ -20,9 +20,9 @@ jobs:
       with:
         fetch-depth: '0'
 
-    - name: Checkout hev-socks5-tunnel submodule
+    - name: Checkout hev-socks5-tunnel submodule recursively
       run: |
-        git submodule update --init hev-socks5-tunnel
+        git submodule update --init --recursive hev-socks5-tunnel
 
     - name: Setup Android SDK
       uses: android-actions/setup-android@v4.0.1
