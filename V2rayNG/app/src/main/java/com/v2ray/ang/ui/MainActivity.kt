@@ -377,9 +377,13 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             val guid = Utils.getUuid()
             val initialJson = """{
   "LISTEN_PORT": 10808,
+  "DOMAINS": [
+    "user1a.yourdomain.com"
+  ],
+  "ENCRYPTION_KEY": "your-client-uuid-here",
   "RESOLVERS": [
     {
-      "ADDRESS": "127.0.0.1:53"
+      "ADDRESS": "1.1.1.1:53"
     }
   ]
 }"""
