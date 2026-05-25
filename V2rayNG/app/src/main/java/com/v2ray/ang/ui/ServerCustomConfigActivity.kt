@@ -34,13 +34,14 @@ class ServerCustomConfigActivity : BaseActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         //setContentView(binding.root)
-        setContentViewWithToolbar(binding.root, showHomeAsUp = true, title = EConfigType.CUSTOM.toString())
+        val config = MmkvManager.decodeServerConfig(editGuid)
+        val titleConfigType = config?.configType ?: EConfigType.CUSTOM
+        setContentViewWithToolbar(binding.root, showHomeAsUp = true, title = titleConfigType.toString())
 
         if (!Utils.getDarkModeStatus(this)) {
             binding.editor.colorScheme = EditorTheme.INTELLIJ_LIGHT
         }
         binding.editor.language = JsonLanguage()
-        val config = MmkvManager.decodeServerConfig(editGuid)
         if (config != null) {
             bindingServer(config)
         } else {
@@ -68,30 +69,43 @@ class ServerCustomConfigActivity : BaseActivity() {
         return true
     }
 
-    /**
-     * save server config
-     */
     private fun saveServer(): Boolean {
         if (TextUtils.isEmpty(binding.etRemarks.text.toString())) {
             toast(R.string.server_lab_remarks)
             return false
         }
 
-        val profileItem = try {
-            CustomFmt.parse(binding.editor.text.toString())
-        } catch (e: Exception) {
-            LogUtil.e(AppConfig.TAG, "Failed to parse custom configuration", e)
-            toast("${getString(R.string.toast_malformed_josn)} ${e.cause?.message}")
-            return false
-        }
-
         val config = MmkvManager.decodeServerConfig(editGuid) ?: ProfileItem.create(EConfigType.CUSTOM)
-        binding.etRemarks.text.let {
-            config.remarks = if (it.isNullOrEmpty()) profileItem?.remarks.orEmpty() else it.toString()
+        val isMdns = config.configType == EConfigType.MDNS
+
+        if (isMdns) {
+            try {
+                com.google.gson.JsonParser.parseString(binding.editor.text.toString())
+            } catch (e: Exception) {
+                toast("Invalid JSON configuration")
+                return false
+            }
+            binding.etRemarks.text.let {
+                config.remarks = if (it.isNullOrEmpty()) "MasterDNSVPN" else it.toString()
+            }
+            config.server = "127.0.0.1"
+            config.serverPort = "10808"
+            config.description = "MasterDNSVPN client configuration"
+        } else {
+            val profileItem = try {
+                CustomFmt.parse(binding.editor.text.toString())
+            } catch (e: Exception) {
+                LogUtil.e(AppConfig.TAG, "Failed to parse custom configuration", e)
+                toast("${getString(R.string.toast_malformed_josn)} ${e.cause?.message}")
+                return false
+            }
+            binding.etRemarks.text.let {
+                config.remarks = if (it.isNullOrEmpty()) profileItem?.remarks.orEmpty() else it.toString()
+            }
+            config.server = profileItem?.server
+            config.serverPort = profileItem?.serverPort
+            config.description = AngConfigManager.generateDescription(config)
         }
-        config.server = profileItem?.server
-        config.serverPort = profileItem?.serverPort
-        config.description = AngConfigManager.generateDescription(config)
 
         MmkvManager.encodeServerConfig(editGuid, config)
         MmkvManager.encodeServerRaw(editGuid, binding.editor.text.toString())
