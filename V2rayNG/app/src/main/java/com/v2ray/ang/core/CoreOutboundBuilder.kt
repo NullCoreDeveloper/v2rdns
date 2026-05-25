@@ -546,10 +546,17 @@ object CoreOutboundBuilder {
     fun populateTlsSettings(streamSettings: OutboundBean.StreamSettingsBean, profileItem: ProfileItem, sniExt: String?) {
         val streamSecurity = profileItem.security.orEmpty()
         val allowInsecure = profileItem.insecure == true
+        val isReality = streamSecurity == AppConfig.REALITY
         val sni = if (profileItem.sni.isNullOrEmpty()) {
             when {
+                // 1. sniExt является доменным именем — предпочитаем его
                 sniExt.isNotNullEmpty() && Utils.isDomainName(sniExt) -> sniExt
+                // 2. адрес сервера — домен
                 profileItem.server.isNotNullEmpty() && Utils.isDomainName(profileItem.server) -> profileItem.server
+                // 3. Для Reality — используем sniExt даже если это не домен (может быть IP)
+                //    Xray Reality поддерживает serverName = IP
+                isReality && sniExt.isNotNullEmpty() -> sniExt
+                // 4. Последний резерв — sniExt как есть
                 else -> sniExt
             }
         } else {
