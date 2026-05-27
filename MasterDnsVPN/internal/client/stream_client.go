@@ -127,9 +127,12 @@ func (c *Client) new_stream(streamID uint16, conn net.Conn, targetPayload []byte
 	}
 
 	// Initialize and start the highly-optimized ARQ engine (Ported from Python)
-	mtu := c.safeUploadMTU
+	// Note: ARQ adds a 2-byte length prefix to every shard payload (see arq.go flushBlock).
+	// We subtract 2 here so that the actual shard size == safeUploadMTU, matching the
+	// DNS name budget that was computed by encodedCharsForPayload(safeUploadMTU).
+	mtu := c.safeUploadMTU - 2
 	if mtu <= 0 {
-		mtu = 1200 // Safe default
+		mtu = 512 // Conservative fallback to avoid DNS name overflow
 	}
 
 	arqCfg := arq.Config{
@@ -576,9 +579,10 @@ func (c *Client) InitVirtualStream0() {
 		CreateTime: time.Now(),
 	}
 
-	mtu := c.safeUploadMTU
+	// Same -2 correction as in new_stream: ARQ adds 2-byte length prefix per shard.
+	mtu := c.safeUploadMTU - 2
 	if mtu <= 0 {
-		mtu = 1200
+		mtu = 512
 	}
 
 	arqCfg := arq.Config{

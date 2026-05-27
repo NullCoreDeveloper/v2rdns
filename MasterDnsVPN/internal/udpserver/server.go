@@ -84,6 +84,7 @@ type Server struct {
 	deferredDroppedPackets   atomic.Uint64
 	lastDeferredDropLogUnix  atomic.Int64
 	invalidDropMode          atomic.Uint32
+	pongNonce                atomic.Uint32
 	outboundRateLimiter      *rate.Limiter
 }
 

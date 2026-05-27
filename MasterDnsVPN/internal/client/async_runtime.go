@@ -683,6 +683,16 @@ func (c *Client) buildPlannedOutboundFrames(
 		return nil, err
 	}
 
+	// Safety guard: if the encoded payload is already > maxDNSNameLen it cannot
+	// fit in any DNS query regardless of domain length. Fail fast to avoid spamming
+	// per-resolver "invalid dns name" errors and silently dropping all packets.
+	const maxDNSNameLen = 253
+	if len(encoded) > maxDNSNameLen {
+		c.log.Warnf("⚠️ Encoded packet too large for any DNS name | Type: %s | EncodedLen: %d > %d | PayloadLen: %d",
+			Enums.PacketTypeName(task.opts.PacketType), len(encoded), maxDNSNameLen, len(task.opts.Payload))
+		return nil, fmt.Errorf("encoded packet too large for DNS tunnel: %d bytes", len(encoded))
+	}
+
 	var (
 		firstDomain    string
 		firstDNSPacket []byte
@@ -726,7 +736,7 @@ func (c *Client) buildPlannedOutboundFrames(
 		case firstDNSPacket == nil:
 			dnsPacket, err = DnsParser.BuildTunnelTXTQuestionPacketPrepared(prepared.normalized, prepared.qname, encoded, Enums.DNS_RECORD_TYPE_TXT, EDnsSafeUDPSize)
 			if err != nil {
-				c.log.Errorf("BuildTunnelTXTQuestionPacketPrepared failed: %v | Domain: %s | QnameLen: %d | EncodedLen: %d", err, domain, len(prepared.qname), len(encoded))
+				c.log.Errorf("BuildTunnelTXTQuestionPacketPrepared failed: %v | Domain: %s | QnameLen: %d | EncodedLen: %d | RawPayloadLen: %d | PacketType: %d", err, domain, len(prepared.qname), len(encoded), len(task.opts.Payload), task.opts.PacketType)
 				continue
 			}
 			firstDomain = domain
