@@ -23,6 +23,8 @@ import (
 	"masterdnsvpn-go/internal/logger"
 	"masterdnsvpn-go/internal/security"
 	VpnProto "masterdnsvpn-go/internal/vpnproto"
+
+	"golang.org/x/time/rate"
 )
 
 const (
@@ -81,8 +83,8 @@ type Server struct {
 	lastDropLogUnix          atomic.Int64
 	deferredDroppedPackets   atomic.Uint64
 	lastDeferredDropLogUnix  atomic.Int64
-	pongNonce                atomic.Uint32
 	invalidDropMode          atomic.Uint32
+	outboundRateLimiter      *rate.Limiter
 }
 
 type request struct {
@@ -170,6 +172,7 @@ func New(cfg config.ServerConfig, log *logger.Logger, codec *security.Codec) *Se
 				return make([]byte, cfg.MaxPacketSize)
 			},
 		},
+		outboundRateLimiter: rate.NewLimiter(rate.Limit(cfg.MaxOutboundPacketsPerSec), cfg.OutboundPacketBurst),
 	}
 }
 

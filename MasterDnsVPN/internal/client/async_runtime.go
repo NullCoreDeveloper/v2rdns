@@ -792,6 +792,9 @@ func (c *Client) asyncWriterWorker(ctx context.Context, id int, conn *net.UDPCon
 				if frame.addr == nil || len(frame.packet) == 0 {
 					continue
 				}
+				if c.outboundRateLimiter != nil {
+					_ = c.outboundRateLimiter.Wait(ctx)
+				}
 				if _, err := conn.WriteToUDP(frame.packet, frame.addr); err == nil {
 					c.balancer.TrackResolverSend(
 						frame.packet,

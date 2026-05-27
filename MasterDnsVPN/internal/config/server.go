@@ -90,6 +90,8 @@ type ServerConfig struct {
 
 	FECDataShards                     int      `toml:"FEC_DATA_SHARDS"`
 	FECParityShards                   int      `toml:"FEC_PARITY_SHARDS"`
+	MaxOutboundPacketsPerSec          int      `toml:"MAX_OUTBOUND_PACKETS_PER_SEC"`
+	OutboundPacketBurst               int      `toml:"OUTBOUND_PACKET_BURST"`
 
 	// Transport limits
 	ClientMaxStreamsPerSession        int      `toml:"MAX_ALLOWED_CLIENT_STREAMS_PER_SESSION"`
@@ -184,6 +186,8 @@ func defaultServerConfig() ServerConfig {
 
 		FECDataShards:                     10,
 		FECParityShards:                   3,
+		MaxOutboundPacketsPerSec:          10000,
+		OutboundPacketBurst:               20000,
 
 		ClientMaxStreamsPerSession:        1000,
 		MaxAllowedClientActiveSessions:    255,
@@ -474,6 +478,8 @@ func finalizeServerConfig(cfg ServerConfig) (ServerConfig, error) {
 
 	cfg.FECDataShards = clampInt(defaultIntBelow(cfg.FECDataShards, 1, 10), 1, 255)
 	cfg.FECParityShards = clampInt(defaultIntBelow(cfg.FECParityShards, 0, 3), 0, 255)
+	cfg.MaxOutboundPacketsPerSec = clampInt(defaultIntBelow(cfg.MaxOutboundPacketsPerSec, 10, 10000), 10, 1000000)
+	cfg.OutboundPacketBurst = clampInt(defaultIntBelow(cfg.OutboundPacketBurst, 10, 20000), 10, 1000000)
 
 	cfg.MaxAllowedClientActiveSessions = clampInt(defaultIntBelow(cfg.MaxAllowedClientActiveSessions, 1, defaultServerConfig().MaxAllowedClientActiveSessions), 1, 255)
 	cfg.MaxAllowedClientActiveStreams = clampInt(defaultIntBelow(cfg.MaxAllowedClientActiveStreams, 1, defaultServerConfig().MaxAllowedClientActiveStreams), 1, int(^uint16(0)))

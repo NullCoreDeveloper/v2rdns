@@ -17,6 +17,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"golang.org/x/time/rate"
+
 	"masterdnsvpn-go/internal/arq"
 	"masterdnsvpn-go/internal/config"
 	dnsCache "masterdnsvpn-go/internal/dnscache"
@@ -45,6 +47,8 @@ type Client struct {
 	resolverAddrMu    sync.RWMutex
 	resolverAddrCache map[string]*net.UDPAddr
 	nowFn             func() time.Time
+
+	outboundRateLimiter *rate.Limiter
 
 	// MTU States
 	syncedUploadMTU                       int
@@ -252,6 +256,7 @@ func New(cfg config.ClientConfig, log *logger.Logger, codec *security.Codec) *Cl
 		cfg:                 cfg,
 		log:                 log,
 		codec:               codec,
+		outboundRateLimiter: rate.NewLimiter(rate.Limit(cfg.MaxOutboundPacketsPerSec), cfg.OutboundPacketBurst),
 		balancer:            NewBalancer(cfg.ResolverBalancingStrategy, log),
 		uploadCompression:   uint8(cfg.UploadCompressionType),
 		downloadCompression: uint8(cfg.DownloadCompressionType),

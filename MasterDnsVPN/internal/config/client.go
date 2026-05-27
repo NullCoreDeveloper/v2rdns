@@ -116,6 +116,8 @@ type ClientConfig struct {
 	ARQTerminalAckWaitTimeoutSec          float64           `toml:"ARQ_TERMINAL_ACK_WAIT_TIMEOUT_SECONDS"`
 	FECDataShards                         int               `toml:"FEC_DATA_SHARDS"`
 	FECParityShards                       int               `toml:"FEC_PARITY_SHARDS"`
+	MaxOutboundPacketsPerSec              int               `toml:"MAX_OUTBOUND_PACKETS_PER_SEC"`
+	OutboundPacketBurst                   int               `toml:"OUTBOUND_PACKET_BURST"`
 	Resolvers                             []ResolverAddress `toml:"-" json:"RESOLVERS"`
 	ResolverMap                           map[string]int    `toml:"-" json:"RESOLVER_MAP"`
 }
@@ -218,6 +220,8 @@ func defaultClientConfig() ClientConfig {
 		ARQTerminalAckWaitTimeoutSec:          90.0,
 		FECDataShards:                         10,
 		FECParityShards:                       3,
+		MaxOutboundPacketsPerSec:              500,
+		OutboundPacketBurst:                   1000,
 	}
 }
 
@@ -417,8 +421,10 @@ func finalizeClientConfig(cfg ClientConfig) (ClientConfig, error) {
 	cfg.ARQTerminalDrainTimeoutSec = clampFloat(defaultFloatAtMostZero(cfg.ARQTerminalDrainTimeoutSec, 120.0), 10.0, 3600.0)
 	cfg.ARQTerminalAckWaitTimeoutSec = clampFloat(defaultFloatAtMostZero(cfg.ARQTerminalAckWaitTimeoutSec, 90.0), 5.0, 3600.0)
 
-	cfg.FECDataShards = clampInt(defaultIntBelow(cfg.FECDataShards, 1, 10), 1, 255)
-	cfg.FECParityShards = clampInt(defaultIntBelow(cfg.FECParityShards, 0, 3), 0, 255)
+	cfg.FECDataShards = clampInt(defaultIntBelow(cfg.FECDataShards, 1, 10), 1, 128)
+	cfg.FECParityShards = clampInt(defaultIntBelow(cfg.FECParityShards, 0, 3), 0, 64)
+	cfg.MaxOutboundPacketsPerSec = clampInt(defaultIntBelow(cfg.MaxOutboundPacketsPerSec, 10, 500), 10, 100000)
+	cfg.OutboundPacketBurst = clampInt(defaultIntBelow(cfg.OutboundPacketBurst, 10, 1000), 10, 100000)
 
 	if cfg.MinUploadMTU < 0 || cfg.MinDownloadMTU < 0 || cfg.MaxUploadMTU < 0 || cfg.MaxDownloadMTU < 0 {
 		return cfg, fmt.Errorf("mtu values cannot be negative")
