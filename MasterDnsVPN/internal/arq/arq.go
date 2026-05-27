@@ -322,24 +322,30 @@ func (a *ARQ) writeLoop() {
 	isCoalescing := false
 
 	flushBlock := func() {
-		if len(coalesceBuf) == 0 {
-			return
-		}
+		for len(coalesceBuf) > 0 {
 
 		chunkSize := a.mtu
-		if len(coalesceBuf) > chunkSize {
-			// Big packet: divide it evenly, up to a.cfg.FECDataShards
-			numShards := (len(coalesceBuf) + chunkSize - 1) / chunkSize
-			if numShards > a.cfg.FECDataShards {
-				numShards = a.cfg.FECDataShards
-			}
-			chunkSize = (len(coalesceBuf) + numShards - 1) / numShards
-		} else {
-			// Small packet: fits in one chunk
+		if len(coalesceBuf) < chunkSize {
 			chunkSize = len(coalesceBuf)
 		}
 
 		numShards := (len(coalesceBuf) + chunkSize - 1) / chunkSize
+		if numShards > a.cfg.FECDataShards {
+			numShards = a.cfg.FECDataShards
+		}
+		
+		// Take only the data that fits in numShards
+		dataToProcess := coalesceBuf
+		maxData := numShards * chunkSize
+		if len(dataToProcess) > maxData {
+			dataToProcess = coalesceBuf[:maxData]
+			coalesceBuf = coalesceBuf[maxData:]
+		} else {
+			coalesceBuf = nil
+		}
+
+		// chunkSize is strictly <= a.mtu
+		numShards = (len(dataToProcess) + chunkSize - 1) / chunkSize
 
 		a.mu.Lock()
 		parityShards := a.cfg.FECParityShards
@@ -397,7 +403,8 @@ func (a *ARQ) writeLoop() {
 			}
 		}
 
-		coalesceBuf = nil
+		}
+		
 		isCoalescing = false
 		coalesceTimer.Stop()
 	}
