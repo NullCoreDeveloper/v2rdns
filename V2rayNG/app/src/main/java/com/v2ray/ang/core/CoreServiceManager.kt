@@ -251,7 +251,8 @@ object CoreServiceManager {
                 mdnsConfig.toByteArray(Charsets.UTF_8),
                 android.util.Base64.NO_WRAP
             )
-            libv2ray.Libv2ray.startMdnsClient(mdnsConfigBase64, "")
+            val filesDir = service.filesDir.absolutePath
+            libv2ray.Libv2ray.startMdnsClient(mdnsConfigBase64, "", filesDir)
             if (!libv2ray.Libv2ray.isMdnsClientRunning()) {
                 error("MasterDNSVPN client failed to start")
             }
