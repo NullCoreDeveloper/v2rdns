@@ -135,4 +135,5 @@ jobs:
         file: ${{ github.workspace }}/V2rayNG/app/build/outputs/apk/*/release/*.apk
         tag: ${{ steps.get_tag.outputs.TAG }}
         file_glob: true
-        prerelease: false
+        prerelease: true
+        overwrite: true
