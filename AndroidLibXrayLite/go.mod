@@ -55,4 +55,4 @@ require (
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
 
-replace masterdnsvpn-go => ../../MasterDnsVPN
+replace masterdnsvpn-go => ../MasterDnsVPN
