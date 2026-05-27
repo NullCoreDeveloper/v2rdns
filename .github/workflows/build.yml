@@ -24,11 +24,6 @@ jobs:
       with:
         fetch-depth: '0'
 
-    - name: Checkout MasterDnsVPN
-      uses: actions/checkout@v6
-      with:
-        repository: 'NullCoreDeveloper/MasterDnsVPN'
-        path: 'MasterDnsVPN'
 
     - name: Checkout hev-socks5-tunnel submodule recursively
       run: |
