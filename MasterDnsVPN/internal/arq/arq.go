@@ -369,10 +369,10 @@ func (a *ARQ) writeLoop() {
 		offset := 0
 		for i := 0; i < numShards; i++ {
 			end := offset + chunkSize
-			if end > len(coalesceBuf) {
-				end = len(coalesceBuf)
+			if end > len(dataToProcess) {
+				end = len(dataToProcess)
 			}
-			data := coalesceBuf[offset:end]
+			data := dataToProcess[offset:end]
 			binary.BigEndian.PutUint16(shards[i][0:2], uint16(len(data)))
 			copy(shards[i][2:], data)
 			offset = end
