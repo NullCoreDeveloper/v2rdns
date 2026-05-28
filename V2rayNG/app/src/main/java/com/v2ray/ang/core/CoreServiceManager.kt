@@ -407,10 +407,19 @@ object CoreServiceManager {
                 }
             }
 
-            val result = if (time >= 0) {
-                service.getString(R.string.connection_test_available, time)
-            } else {
-                service.getString(R.string.connection_test_error, errorStr)
+            val result = try {
+                // Use applicationContext instead of service directly – the service context
+                // may be a JNI-bridge wrapper that has incomplete resource initialisation,
+                // causing "Invalid resource ID 0x00000000" crashes on background threads.
+                val appCtx = service.applicationContext
+                if (time >= 0) {
+                    appCtx.getString(R.string.connection_test_available, time)
+                } else {
+                    appCtx.getString(R.string.connection_test_error, errorStr)
+                }
+            } catch (e: Exception) {
+                // Fallback: plain string formatting so the UI always gets a result
+                if (time >= 0) "Success: ${time}ms" else "Error: $errorStr"
             }
             MessageUtil.sendMsg2UI(service, AppConfig.MSG_MEASURE_DELAY_SUCCESS, result)
 
