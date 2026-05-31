@@ -29,7 +29,8 @@ func decodeConfigJSONInto(dst any, raw []byte) (map[string]bool, error) {
 
 	docLower := make(map[string]json.RawMessage, len(doc))
 	for k, v := range doc {
-		docLower[strings.ToLower(strings.TrimSpace(k))] = v
+		normalizedK := strings.ReplaceAll(strings.ToLower(strings.TrimSpace(k)), "_", "")
+		docLower[normalizedK] = v
 	}
 
 	value := reflect.ValueOf(dst)
@@ -57,7 +58,8 @@ func decodeConfigJSONInto(dst any, raw []byte) (map[string]bool, error) {
 			continue
 		}
 
-		rawValue, ok := docLower[strings.ToLower(strings.TrimSpace(tag))]
+		normalizedTag := strings.ReplaceAll(strings.ToLower(strings.TrimSpace(tag)), "_", "")
+		rawValue, ok := docLower[normalizedTag]
 		if !ok {
 			continue
 		}
