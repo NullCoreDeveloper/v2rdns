@@ -449,7 +449,7 @@ func finalizeClientConfig(cfg ClientConfig) (ClientConfig, error) {
 	}
 
 	if cfg.MaxDownloadMTU > 0 && cfg.MinDownloadMTU > cfg.MaxDownloadMTU {
-		return cfg, fmt.Errorf("MIN_DOWNLOAD_MTU cannot be greater than MAX_DOWNLOAD_MTU")
+		cfg.MinDownloadMTU = cfg.MaxDownloadMTU
 	}
 
 	cfg.MTUTestRetries = defaultIntBelow(cfg.MTUTestRetries, 1, 1)
