@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"sync"
 
+	"golang.org/x/crypto/blowfish"
 	"golang.org/x/crypto/chacha20"
 
 	baseCodec "masterdnsvpn-go/internal/basecodec"
@@ -59,8 +60,9 @@ func putCryptoBuffer(bufPtr *[]byte) {
 type Codec struct {
 	method  int
 	key     []byte
-	encrypt func(dst, src []byte) ([]byte, error)
-	decrypt func(dst, src []byte) ([]byte, error)
+	encrypt     func(dst, src []byte) ([]byte, error)
+	decrypt     func(dst, src []byte) ([]byte, error)
+	blockCipher *blowfish.Cipher
 }
 
 func NewCodecFromConfig(cfg config.ServerConfig, rawKey string) (*Codec, error) {
@@ -68,7 +70,7 @@ func NewCodecFromConfig(cfg config.ServerConfig, rawKey string) (*Codec, error) 
 }
 
 func NewCodec(method int, rawKey string) (*Codec, error) {
-	if method < 0 || method > 5 {
+	if method < 0 || method > 6 {
 		return nil, ErrInvalidCodecMethod
 	}
 
@@ -95,6 +97,14 @@ func NewCodec(method int, rawKey string) (*Codec, error) {
 		}
 		codec.encrypt = codec.makeAESEncryptor(aead)
 		codec.decrypt = codec.makeAESDecryptor(aead)
+	case 6:
+		bc, err := blowfish.NewCipher(derivedKey)
+		if err != nil {
+			return nil, err
+		}
+		codec.blockCipher = bc
+		codec.encrypt = codec.hybridEncrypt
+		codec.decrypt = codec.hybridDecrypt
 	default:
 		return nil, ErrInvalidCodecMethod
 	}
@@ -298,6 +308,84 @@ func (c *Codec) chachaDecrypt(dst, data []byte) ([]byte, error) {
 	return dst, nil
 }
 
+func (c *Codec) hybridEncrypt(dst, data []byte) ([]byte, error) {
+	if len(data) < 8 {
+		padded := make([]byte, 8)
+		copy(padded, data)
+		data = padded
+	}
+
+	sessionID := data[0]
+	streamID := data[2:4]
+	seqNum := data[4:6]
+	fragmentID := data[6]
+
+	if cap(dst) < len(data) {
+		dst = make([]byte, len(data))
+	} else {
+		dst = dst[:len(data)]
+	}
+	copy(dst, data)
+
+	c.blockCipher.Encrypt(dst[:8], dst[:8])
+
+	if len(dst) > 8 {
+		nonce := make([]byte, chacha20.NonceSize)
+		nonce[0] = sessionID
+		copy(nonce[1:3], streamID)
+		copy(nonce[3:5], seqNum)
+		nonce[5] = fragmentID
+
+		streamCipher, err := chacha20.NewUnauthenticatedCipher(c.key, nonce)
+		if err != nil {
+			return nil, err
+		}
+
+		tail := dst[8:]
+		streamCipher.XORKeyStream(tail, tail)
+	}
+
+	return dst, nil
+}
+
+func (c *Codec) hybridDecrypt(dst, data []byte) ([]byte, error) {
+	if len(data) < 8 {
+		return nil, ErrInvalidCiphertext
+	}
+
+	if cap(dst) < len(data) {
+		dst = make([]byte, len(data))
+	} else {
+		dst = dst[:len(data)]
+	}
+	copy(dst, data)
+
+	c.blockCipher.Decrypt(dst[:8], dst[:8])
+
+	streamID := dst[2:4]
+	seqNum := dst[4:6]
+	sessionID := dst[0]
+	fragmentID := dst[6]
+
+	if len(dst) > 8 {
+		nonce := make([]byte, chacha20.NonceSize)
+		nonce[0] = sessionID
+		copy(nonce[1:3], streamID)
+		copy(nonce[3:5], seqNum)
+		nonce[5] = fragmentID
+
+		streamCipher, err := chacha20.NewUnauthenticatedCipher(c.key, nonce)
+		if err != nil {
+			return nil, err
+		}
+
+		tail := dst[8:]
+		streamCipher.XORKeyStream(tail, tail)
+	}
+
+	return dst, nil
+}
+
 func (c *Codec) makeAESEncryptor(aead cipher.AEAD) func(dst, src []byte) ([]byte, error) {
 	return func(dst, src []byte) ([]byte, error) {
 		if len(src) == 0 {
@@ -369,7 +457,7 @@ func deriveKey(method int, rawKey string) []byte {
 	targetLen := requiredDerivedKeyLength(method)
 
 	switch method {
-	case 2, 5:
+	case 2, 5, 6:
 		sum := sha256.Sum256(bKey)
 		return sum[:]
 	case 3:
@@ -384,7 +472,7 @@ func deriveKey(method int, rawKey string) []byte {
 
 func requiredDerivedKeyLength(method int) int {
 	switch method {
-	case 2, 5:
+	case 2, 5, 6:
 		return 32
 	case 3:
 		return 16

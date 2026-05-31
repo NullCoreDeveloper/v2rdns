@@ -90,8 +90,11 @@ type ServerConfig struct {
 
 	FECDataShards                     int      `toml:"FEC_DATA_SHARDS"`
 	FECParityShards                   int      `toml:"FEC_PARITY_SHARDS"`
+	FECMinPacketSize                  int      `toml:"FEC_MIN_PACKET_SIZE"`
 	MaxOutboundPacketsPerSec          int      `toml:"MAX_OUTBOUND_PACKETS_PER_SEC"`
 	OutboundPacketBurst               int      `toml:"OUTBOUND_PACKET_BURST"`
+
+	EnableEDNS0                       bool     `toml:"ENABLE_EDNS0"`
 
 	// Transport limits
 	ClientMaxStreamsPerSession        int      `toml:"MAX_ALLOWED_CLIENT_STREAMS_PER_SESSION"`
@@ -184,10 +187,13 @@ func defaultServerConfig() ServerConfig {
 		ARQTerminalDrainTimeoutSec:        120.0,
 		ARQTerminalAckWaitTimeoutSec:      90.0,
 
-		FECDataShards:                     10,
+		FECDataShards:                     1,
 		FECParityShards:                   3,
+		FECMinPacketSize:                  100,
 		MaxOutboundPacketsPerSec:          10000,
 		OutboundPacketBurst:               20000,
+
+		EnableEDNS0:                       false,
 
 		ClientMaxStreamsPerSession:        1000,
 		MaxAllowedClientActiveSessions:    255,
@@ -196,7 +202,7 @@ func defaultServerConfig() ServerConfig {
 		ClientMaxSetupDuplicationCount:    6,
 		ClientMaxUploadMTU:                150,
 		ClientMaxDownloadMTU:              4096,
-		ClientMaxRxTxWorkers:              255,
+		ClientMaxRxTxWorkers:              128,
 		ClientMinPingAggressiveInterval:   0.05,
 		ClientMaxPacketsPerBatch:          20,
 		ClientMaxARQWindowSize:            8000,
@@ -443,7 +449,7 @@ func finalizeServerConfig(cfg ServerConfig) (ServerConfig, error) {
 	cfg.SupportedUploadCompressionTypes = normalizeCompressionTypeList(cfg.SupportedUploadCompressionTypes)
 	cfg.SupportedDownloadCompressionTypes = normalizeCompressionTypeList(cfg.SupportedDownloadCompressionTypes)
 
-	if cfg.DataEncryptionMethod < 0 || cfg.DataEncryptionMethod > 5 {
+	if cfg.DataEncryptionMethod < 0 || cfg.DataEncryptionMethod > 6 {
 		cfg.DataEncryptionMethod = 1
 	}
 
@@ -476,8 +482,9 @@ func finalizeServerConfig(cfg ServerConfig) (ServerConfig, error) {
 	cfg.ARQTerminalDrainTimeoutSec = clampFloat(defaultFloatAtMostZero(cfg.ARQTerminalDrainTimeoutSec, 120.0), 10.0, 3600.0)
 	cfg.ARQTerminalAckWaitTimeoutSec = clampFloat(defaultFloatAtMostZero(cfg.ARQTerminalAckWaitTimeoutSec, 90.0), 5.0, 3600.0)
 
-	cfg.FECDataShards = clampInt(defaultIntBelow(cfg.FECDataShards, 1, 10), 1, 255)
-	cfg.FECParityShards = clampInt(defaultIntBelow(cfg.FECParityShards, 0, 3), 0, 255)
+	cfg.FECDataShards = clampInt(defaultIntBelow(cfg.FECDataShards, 1, 1), 1, 255)
+	cfg.FECParityShards = clampInt(defaultIntBelow(cfg.FECParityShards, 0, 0), 0, 255)
+	cfg.FECMinPacketSize = clampInt(defaultIntBelow(cfg.FECMinPacketSize, 1, 100), 0, 65535)
 	cfg.MaxOutboundPacketsPerSec = clampInt(defaultIntBelow(cfg.MaxOutboundPacketsPerSec, 10, 10000), 10, 1000000)
 	cfg.OutboundPacketBurst = clampInt(defaultIntBelow(cfg.OutboundPacketBurst, 10, 20000), 10, 1000000)
 
@@ -485,7 +492,7 @@ func finalizeServerConfig(cfg ServerConfig) (ServerConfig, error) {
 	cfg.MaxAllowedClientActiveStreams = clampInt(defaultIntBelow(cfg.MaxAllowedClientActiveStreams, 1, defaultServerConfig().MaxAllowedClientActiveStreams), 1, int(^uint16(0)))
 	cfg.ClientMaxPacketDuplicationCount = clampInt(defaultIntBelow(cfg.ClientMaxPacketDuplicationCount, 0, defaultServerConfig().ClientMaxPacketDuplicationCount), 0, min(15, int(^uint8(0))))
 	cfg.ClientMaxSetupDuplicationCount = clampInt(defaultIntBelow(cfg.ClientMaxSetupDuplicationCount, 0, defaultServerConfig().ClientMaxSetupDuplicationCount), 0, min(15, int(^uint8(0))))
-	cfg.ClientMaxUploadMTU = clampInt(defaultIntBelow(cfg.ClientMaxUploadMTU, 1, defaultServerConfig().ClientMaxUploadMTU), 1, int(^uint8(0)))
+	cfg.ClientMaxUploadMTU = clampInt(defaultIntBelow(cfg.ClientMaxUploadMTU, 1, defaultServerConfig().ClientMaxUploadMTU), 1, int(^uint16(0)))
 	cfg.ClientMaxDownloadMTU = clampInt(defaultIntBelow(cfg.ClientMaxDownloadMTU, 1, defaultServerConfig().ClientMaxDownloadMTU), 1, int(^uint16(0)))
 	cfg.ClientMaxRxTxWorkers = clampInt(defaultIntBelow(cfg.ClientMaxRxTxWorkers, 1, defaultServerConfig().ClientMaxRxTxWorkers), 1, int(^uint8(0)))
 	cfg.ClientMinPingAggressiveInterval = clampFloat(defaultFloatAtMostZero(cfg.ClientMinPingAggressiveInterval, defaultServerConfig().ClientMinPingAggressiveInterval), 0.05, 1.0)

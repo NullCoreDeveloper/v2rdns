@@ -27,6 +27,11 @@ func decodeConfigJSONInto(dst any, raw []byte) (map[string]bool, error) {
 		return nil, err
 	}
 
+	docLower := make(map[string]json.RawMessage, len(doc))
+	for k, v := range doc {
+		docLower[strings.ToLower(strings.TrimSpace(k))] = v
+	}
+
 	value := reflect.ValueOf(dst)
 	if value.Kind() != reflect.Ptr || value.IsNil() {
 		return nil, fmt.Errorf("config target must be a non-nil pointer")
@@ -52,7 +57,7 @@ func decodeConfigJSONInto(dst any, raw []byte) (map[string]bool, error) {
 			continue
 		}
 
-		rawValue, ok := doc[tag]
+		rawValue, ok := docLower[strings.ToLower(strings.TrimSpace(tag))]
 		if !ok {
 			continue
 		}

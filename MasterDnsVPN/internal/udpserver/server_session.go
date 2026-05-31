@@ -18,6 +18,7 @@ import (
 	DnsParser "masterdnsvpn-go/internal/dnsparser"
 	domainMatcher "masterdnsvpn-go/internal/domainmatcher"
 	Enums "masterdnsvpn-go/internal/enums"
+	"masterdnsvpn-go/internal/logger"
 	VpnProto "masterdnsvpn-go/internal/vpnproto"
 )
 
@@ -137,7 +138,7 @@ func (s *Server) buildInvalidSessionErrorResponse(questionPacket []byte, request
 		SessionID:  sessionID,
 		PacketType: Enums.PACKET_ERROR_DROP,
 		Payload:    payload[:],
-	}, responseMode == mtuProbeModeBase64)
+	}, responseMode == mtuProbeModeBase64, s.cfg.EnableEDNS0)
 	if err != nil {
 		return nil
 	}
@@ -154,7 +155,7 @@ func (s *Server) buildSessionBusyResponse(questionPacket []byte, requestName str
 		SessionID:  0,
 		PacketType: Enums.PACKET_SESSION_BUSY,
 		Payload:    payload[:],
-	}, responseMode == mtuProbeModeBase64)
+	}, responseMode == mtuProbeModeBase64, s.cfg.EnableEDNS0)
 	if err != nil {
 		return nil
 	}
@@ -167,7 +168,10 @@ func (s *Server) buildSessionVPNResponse(questionPacket []byte, requestName stri
 	}
 	packet.SessionID = record.ID
 	packet.SessionCookie = record.Cookie
-	response, err := DnsParser.BuildVPNResponsePacket(questionPacket, requestName, packet, record.ResponseBase64)
+	response, err := DnsParser.BuildVPNResponsePacket(questionPacket, requestName, packet, record.ResponseBase64, s.cfg.EnableEDNS0)
+	if s.log != nil {
+		s.log.Infof("Responding with packet: %s | Stream: %d | Seq: %d", Enums.PacketTypeName(packet.PacketType), packet.StreamID, packet.SequenceNum)
+	}
 	if err != nil {
 		return nil
 	}
@@ -218,6 +222,7 @@ func (s *Server) streamARQConfig(compressionType uint8) arq.Config {
 		TerminalAckWaitTimeout:      s.cfg.ARQTerminalAckWaitTimeoutSec,
 		FECDataShards:               s.cfg.FECDataShards,
 		FECParityShards:             s.cfg.FECParityShards,
+		FECMinPacketSize:            s.cfg.FECMinPacketSize,
 		CompressionType:             compressionType,
 		IsClient:                    false,
 	}
@@ -379,7 +384,7 @@ func (s *Server) dequeueSessionResponse(sessionID uint8, now time.Time) (*VpnPro
 			popped, _, ok = stream.PopNextTXPacket()
 			if ok {
 				stream.NoteTXPacketDequeued(popped)
-				if (popped.PacketType == Enums.PACKET_STREAM_DATA || popped.PacketType == Enums.PACKET_STREAM_RESEND) &&
+				if (popped.PacketType == Enums.PACKET_STREAM_DATA || popped.PacketType == Enums.PACKET_STREAM_FEC_PARITY || popped.PacketType == Enums.PACKET_STREAM_RESEND) &&
 					stream.ARQ != nil && !stream.ARQ.HasPendingSequence(popped.SequenceNum) {
 					putTXPacketToPool(popped)
 					continue
@@ -756,7 +761,7 @@ func (s *Server) handleSessionInitRequest(questionPacket []byte, decision domain
 		SessionID:  0,
 		PacketType: Enums.PACKET_SESSION_ACCEPT,
 		Payload:    responsePayload,
-	}, record.ResponseMode == mtuProbeModeBase64)
+	}, record.ResponseMode == mtuProbeModeBase64, s.cfg.EnableEDNS0)
 	if err != nil {
 		return nil
 	}
@@ -772,12 +777,17 @@ func resolveCompressionType(requested uint8, allowedMask uint8) uint8 {
 }
 
 func (s *Server) handleMTUUpRequest(questionPacket []byte, _ DnsParser.LitePacket, decision domainMatcher.Decision, vpnPacket VpnProto.Packet) []byte {
+	if s.log != nil && s.log.Enabled(logger.LevelDebug) {
+		s.log.Debugf("Handling MTU_UP_REQ, payload len: %d", len(vpnPacket.Payload))
+	}
 	if len(vpnPacket.Payload) < mtuProbeUpMinSize {
+		if s.log != nil { s.log.Debugf("Payload too small: %d < %d", len(vpnPacket.Payload), mtuProbeUpMinSize) }
 		return nil
 	}
 
 	baseEncode, ok := parseMTUProbeBaseEncoding(vpnPacket.Payload[0])
 	if !ok {
+		if s.log != nil { s.log.Debugf("Invalid baseEncode: %v", vpnPacket.Payload[0]) }
 		return nil
 	}
 
@@ -786,12 +796,16 @@ func (s *Server) handleMTUUpRequest(questionPacket []byte, _ DnsParser.LitePacke
 		SessionID:  vpnPacket.SessionID,
 		PacketType: Enums.PACKET_MTU_UP_RES,
 		Payload:    responsePayload[:],
-	}, baseEncode)
+	}, baseEncode, s.cfg.EnableEDNS0)
 
 	if err != nil {
+		if s.log != nil { s.log.Debugf("BuildVPNResponsePacket failed: %v", err) }
 		return nil
 	}
 
+	if s.log != nil && s.log.Enabled(logger.LevelDebug) {
+		s.log.Debugf("Returning MTU_UP_RES of size %d", len(response))
+	}
 	return response
 }
 
@@ -826,7 +840,7 @@ func (s *Server) handleMTUDownRequest(questionPacket []byte, _ DnsParser.LitePac
 		FragmentID:     vpnPacket.FragmentID,
 		TotalFragments: vpnPacket.TotalFragments,
 		Payload:        payload,
-	}, baseEncode)
+	}, baseEncode, s.cfg.EnableEDNS0)
 	if err != nil {
 		return nil
 	}

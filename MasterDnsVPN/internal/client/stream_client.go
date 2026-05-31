@@ -155,6 +155,8 @@ func (c *Client) new_stream(streamID uint16, conn net.Conn, targetPayload []byte
 		TerminalAckWaitTimeout:      c.cfg.ARQTerminalAckWaitTimeoutSec,
 		FECDataShards:               c.cfg.FECDataShards,
 		FECParityShards:             c.cfg.FECParityShards,
+		FECMinPacketSize:            c.cfg.FECMinPacketSize,
+		ReorderDeadlockTimeoutSeconds: c.cfg.ARQReorderDeadlockTimeoutSeconds,
 		CompressionType:             c.uploadCompression,
 		IsClient:                    true,
 	}
@@ -201,6 +203,11 @@ func (s *Stream_client) PushTXPacket(priority int, packetType uint8, sequenceNum
 
 	// Skip Ping packets if the queue is already congested (prevent bloat)
 	if packetType == Enums.PACKET_PING && s.txQueue != nil && s.txQueue.FastSize() > 500 {
+		return false
+	}
+
+	// Backpressure: reject new data packets if the queue is too large
+	if (packetType == Enums.PACKET_STREAM_DATA || packetType == Enums.PACKET_STREAM_FEC_PARITY) && s.txQueue != nil && s.txQueue.FastSize() > 2048 {
 		return false
 	}
 
@@ -605,6 +612,8 @@ func (c *Client) InitVirtualStream0() {
 		TerminalAckWaitTimeout:      c.cfg.ARQTerminalAckWaitTimeoutSec,
 		FECDataShards:               c.cfg.FECDataShards,
 		FECParityShards:             c.cfg.FECParityShards,
+		FECMinPacketSize:            c.cfg.FECMinPacketSize,
+		ReorderDeadlockTimeoutSeconds: c.cfg.ARQReorderDeadlockTimeoutSeconds,
 		CompressionType:             c.uploadCompression,
 	}
 

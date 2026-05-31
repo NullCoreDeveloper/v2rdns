@@ -169,32 +169,6 @@ func (c *Client) asyncStreamDispatcher(ctx context.Context) {
 					rrApplied = true
 				}
 
-				if id == 0 && peekedItem.PacketType == Enums.PACKET_PING {
-					hasOtherWork := false
-					for _, otherID := range ids {
-						if otherID == 0 {
-							continue
-						}
-						if otherID == -1 {
-							if c.orphanQueue != nil && c.orphanQueue.FastSize() > 0 {
-								hasOtherWork = true
-								break
-							}
-							continue
-						}
-						os := streams[uint16(otherID)]
-						if os != nil && os.txQueue != nil && os.txQueue.FastSize() > 0 {
-							hasOtherWork = true
-							break
-						}
-					}
-					if hasOtherWork {
-						peekedItem = nil
-						peekedOK = false
-						continue
-					}
-				}
-
 				break
 			}
 		}
@@ -235,7 +209,7 @@ func (c *Client) asyncStreamDispatcher(ctx context.Context) {
 		}
 
 		if selected != nil &&
-			(item.PacketType == Enums.PACKET_STREAM_DATA || item.PacketType == Enums.PACKET_STREAM_RESEND) &&
+			(item.PacketType == Enums.PACKET_STREAM_DATA || item.PacketType == Enums.PACKET_STREAM_FEC_PARITY || item.PacketType == Enums.PACKET_STREAM_RESEND) &&
 			!c.shouldTransmitQueuedStreamPacket(selected, item) {
 			selected.ReleaseTXPacket(item)
 			continue
@@ -395,7 +369,7 @@ func (c *Client) shouldTransmitQueuedStreamPacket(stream *Stream_client, item *c
 		return false
 	}
 
-	if item.PacketType != Enums.PACKET_STREAM_DATA && item.PacketType != Enums.PACKET_STREAM_RESEND {
+	if item.PacketType != Enums.PACKET_STREAM_DATA && item.PacketType != Enums.PACKET_STREAM_FEC_PARITY && item.PacketType != Enums.PACKET_STREAM_RESEND {
 		return true
 	}
 

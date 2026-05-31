@@ -45,6 +45,7 @@ type ClientConfig struct {
 	LocalDNSCachePersist                  bool              `toml:"LOCAL_DNS_CACHE_PERSIST_TO_FILE"`
 	LocalDNSCacheFlushSec                 float64           `toml:"LOCAL_DNS_CACHE_FLUSH_INTERVAL_SECONDS"`
 	ResolverBalancingStrategy             int               `toml:"RESOLVER_BALANCING_STRATEGY"`
+	MultipathMode                         bool              `toml:"MULTIPATH_MODE"`
 	PacketDuplicationCount                int               `toml:"PACKET_DUPLICATION_COUNT"`
 	SetupPacketDuplicationCount           int               `toml:"SETUP_PACKET_DUPLICATION_COUNT"`
 	StreamResolverFailoverResendThreshold int               `toml:"STREAM_RESOLVER_FAILOVER_RESEND_THRESHOLD"`
@@ -53,6 +54,7 @@ type ClientConfig struct {
 	AutoDisableTimeoutServers             bool              `toml:"AUTO_DISABLE_TIMEOUT_SERVERS"`
 	AutoDisableTimeoutWindowSeconds       float64           `toml:"AUTO_DISABLE_TIMEOUT_WINDOW_SECONDS"`
 	BaseEncodeData                        bool              `toml:"BASE_ENCODE_DATA"`
+	EnableEDNS0                           bool              `toml:"ENABLE_EDNS0"`
 	UploadCompressionType                 int               `toml:"UPLOAD_COMPRESSION_TYPE"`
 	DownloadCompressionType               int               `toml:"DOWNLOAD_COMPRESSION_TYPE"`
 	CompressionMinSize                    int               `toml:"COMPRESSION_MIN_SIZE"`
@@ -116,6 +118,8 @@ type ClientConfig struct {
 	ARQTerminalAckWaitTimeoutSec          float64           `toml:"ARQ_TERMINAL_ACK_WAIT_TIMEOUT_SECONDS"`
 	FECDataShards                         int               `toml:"FEC_DATA_SHARDS"`
 	FECParityShards                       int               `toml:"FEC_PARITY_SHARDS"`
+	FECMinPacketSize                      int               `toml:"FEC_MIN_PACKET_SIZE"`
+	ARQReorderDeadlockTimeoutSeconds      float64           `toml:"ARQ_REORDER_DEADLOCK_TIMEOUT_SECONDS"`
 	MaxOutboundPacketsPerSec              int               `toml:"MAX_OUTBOUND_PACKETS_PER_SEC"`
 	OutboundPacketBurst                   int               `toml:"OUTBOUND_PACKET_BURST"`
 	Resolvers                             []ResolverAddress `toml:"-" json:"RESOLVERS"`
@@ -159,6 +163,7 @@ func defaultClientConfig() ClientConfig {
 		AutoDisableTimeoutServers:             true,
 		AutoDisableTimeoutWindowSeconds:       30.0,
 		BaseEncodeData:                        false,
+		EnableEDNS0:                           false,
 		UploadCompressionType:                 compression.TypeZSTD,
 		DownloadCompressionType:               compression.TypeZSTD,
 		CompressionMinSize:                    compression.DefaultMinSize,
@@ -172,7 +177,7 @@ func defaultClientConfig() ClientConfig {
 		MTUTestRetries:                        2,
 		MTUTestTimeout:                        2.0,
 		MTUTestParallelism:                    16,
-		RX_TX_Workers:                         4,
+		RX_TX_Workers:                         32,
 		TunnelProcessWorkers:                  0,
 		TunnelPacketTimeoutSec:                10.0,
 		DispatcherIdlePollIntervalSeconds:     0.020,
@@ -218,8 +223,10 @@ func defaultClientConfig() ClientConfig {
 		ARQDataNackRepeatSeconds:              1.0,
 		ARQTerminalDrainTimeoutSec:            120.0,
 		ARQTerminalAckWaitTimeoutSec:          90.0,
-		FECDataShards:                         10,
+		FECDataShards:                         1,
 		FECParityShards:                       3,
+		FECMinPacketSize:                      100,
+		ARQReorderDeadlockTimeoutSeconds:      1.0,
 		MaxOutboundPacketsPerSec:              500,
 		OutboundPacketBurst:                   1000,
 	}
@@ -282,6 +289,7 @@ func loadClientConfigFromJSONBase64(encoded string) (ClientConfig, error) {
 	if err != nil {
 		return cfg, fmt.Errorf("decode client JSON base64 failed: %w", err)
 	}
+	println("GoLog: Raw JSON config: " + string(raw))
 	defined, err := decodeConfigJSONInto(&cfg, raw)
 	if err != nil {
 		return cfg, fmt.Errorf("parse client JSON base64 failed: %w", err)
@@ -351,7 +359,7 @@ func finalizeClientConfig(cfg ClientConfig) (ClientConfig, error) {
 		return cfg, fmt.Errorf("invalid PROTOCOL_TYPE: %q", cfg.ProtocolType)
 	}
 
-	if cfg.DataEncryptionMethod < 0 || cfg.DataEncryptionMethod > 5 {
+	if cfg.DataEncryptionMethod < 0 || cfg.DataEncryptionMethod > 6 {
 		return cfg, fmt.Errorf("invalid DATA_ENCRYPTION_METHOD: %d", cfg.DataEncryptionMethod)
 	}
 
@@ -421,8 +429,10 @@ func finalizeClientConfig(cfg ClientConfig) (ClientConfig, error) {
 	cfg.ARQTerminalDrainTimeoutSec = clampFloat(defaultFloatAtMostZero(cfg.ARQTerminalDrainTimeoutSec, 120.0), 10.0, 3600.0)
 	cfg.ARQTerminalAckWaitTimeoutSec = clampFloat(defaultFloatAtMostZero(cfg.ARQTerminalAckWaitTimeoutSec, 90.0), 5.0, 3600.0)
 
-	cfg.FECDataShards = clampInt(defaultIntBelow(cfg.FECDataShards, 1, 10), 1, 128)
-	cfg.FECParityShards = clampInt(defaultIntBelow(cfg.FECParityShards, 0, 3), 0, 64)
+	cfg.FECDataShards = clampInt(defaultIntBelow(cfg.FECDataShards, 1, 1), 1, 128)
+	cfg.FECParityShards = clampInt(defaultIntBelow(cfg.FECParityShards, 0, 0), 0, 128)
+	cfg.FECMinPacketSize = clampInt(defaultIntBelow(cfg.FECMinPacketSize, 1, 100), 0, 65535)
+	cfg.ARQReorderDeadlockTimeoutSeconds = clampFloat(defaultFloatAtMostZero(cfg.ARQReorderDeadlockTimeoutSeconds, 1.0), 0.1, 60.0)
 	cfg.MaxOutboundPacketsPerSec = clampInt(defaultIntBelow(cfg.MaxOutboundPacketsPerSec, 10, 500), 10, 100000)
 	cfg.OutboundPacketBurst = clampInt(defaultIntBelow(cfg.OutboundPacketBurst, 10, 1000), 10, 100000)
 
@@ -432,6 +442,10 @@ func finalizeClientConfig(cfg ClientConfig) (ClientConfig, error) {
 
 	if cfg.MaxUploadMTU > 0 && cfg.MinUploadMTU > cfg.MaxUploadMTU {
 		return cfg, fmt.Errorf("MIN_UPLOAD_MTU cannot be greater than MAX_UPLOAD_MTU")
+	}
+
+	if !cfg.EnableEDNS0 && cfg.MaxDownloadMTU > 250 {
+		cfg.MaxDownloadMTU = 250
 	}
 
 	if cfg.MaxDownloadMTU > 0 && cfg.MinDownloadMTU > cfg.MaxDownloadMTU {

@@ -39,7 +39,7 @@ func TestBuildAndExtractVPNResponsePacketSingleAnswer(t *testing.T) {
 		SessionID:  9,
 		PacketType: Enums.PACKET_MTU_UP_RES,
 		Payload:    []byte("challenge"),
-	}, false)
+	}, false, false)
 	if err != nil {
 		t.Fatalf("BuildVPNResponsePacket returned error: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestBuildAndExtractVPNResponsePacketChunked(t *testing.T) {
 		StreamID:    1,
 		SequenceNum: 2,
 		Payload:     payload,
-	}, false)
+	}, false, false)
 	if err != nil {
 		t.Fatalf("BuildVPNResponsePacket returned error: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestBuildAndExtractVPNResponsePacketSingleAnswerBaseEncoded(t *testing.T) {
 		SessionID:  9,
 		PacketType: Enums.PACKET_MTU_UP_RES,
 		Payload:    []byte("challenge"),
-	}, true)
+	}, true, false)
 	if err != nil {
 		t.Fatalf("BuildVPNResponsePacket returned error: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestBuildAndExtractVPNResponsePacketChunkedBaseEncoded(t *testing.T) {
 		StreamID:    1,
 		SequenceNum: 2,
 		Payload:     payload,
-	}, true)
+	}, true, false)
 	if err != nil {
 		t.Fatalf("BuildVPNResponsePacket returned error: %v", err)
 	}
@@ -160,7 +160,7 @@ func TestBuildAndExtractVPNResponsePacketCompressed(t *testing.T) {
 		TotalFragments:  1,
 		CompressionType: compression.TypeZLIB,
 		Payload:         payload,
-	}, false)
+	}, false, false)
 	if err != nil {
 		t.Fatalf("BuildVPNResponsePacket returned error: %v", err)
 	}
@@ -187,7 +187,7 @@ func TestBuildVPNResponsePacketPreservesOriginalQuestionCaseInAnswerName(t *test
 		SessionID:  9,
 		PacketType: Enums.PACKET_MTU_UP_RES,
 		Payload:    []byte("challenge"),
-	}, false)
+	}, false, false)
 	if err != nil {
 		t.Fatalf("BuildVPNResponsePacket returned error: %v", err)
 	}
@@ -206,8 +206,8 @@ func TestBuildVPNResponsePacketPreservesOriginalQuestionCaseInAnswerName(t *test
 	rawMixedCase := encodeDNSName("ANHfwjAU21.aa.CoM")
 	questionEnd := dnsHeaderSize + len(rawMixedCase) + 4
 	answerStart := questionEnd
-	if !bytes.Equal(response[answerStart:answerStart+len(rawMixedCase)], rawMixedCase) {
-		t.Fatal("answer owner name must preserve original question wire casing")
+	if !bytes.Equal(response[answerStart:answerStart+2], []byte{0xC0, 0x0C}) {
+		t.Fatal("answer owner name must preserve original question wire casing via pointer")
 	}
 }
 
@@ -240,7 +240,7 @@ func TestExtractVPNResponseReordersChunkedAnswers(t *testing.T) {
 	copy(reordered, chunks)
 	reordered[1], reordered[2] = reordered[2], reordered[1]
 
-	response, err := BuildTXTResponsePacket(query, "x.v.example.com", reordered)
+	response, err := BuildTXTResponsePacket(query, "x.v.example.com", reordered, false)
 	if err != nil {
 		t.Fatalf("BuildTXTResponsePacket returned error: %v", err)
 	}

@@ -113,7 +113,10 @@ func BuildTargetPayload(target Target) []byte {
 }
 
 func parseTargetWithOffset(payload []byte) (Target, int, error) {
-	target, err := ParseTargetPayload(payload)
+	tmp := make([]byte, 1+len(payload))
+	tmp[0] = 0x00 // dummy CMD
+	copy(tmp[1:], payload)
+	target, err := ParseTargetPayload(tmp)
 	if err != nil {
 		return Target{}, 0, err
 	}

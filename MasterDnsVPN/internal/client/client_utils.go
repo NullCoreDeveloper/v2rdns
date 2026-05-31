@@ -499,6 +499,7 @@ func (c *Client) preprocessInboundPacket(packet VpnProto.Packet) bool {
 	if packet.StreamID != 0 && (!stream_exists || exists_stream == nil) {
 		if c.isRecentlyClosedStream(packet.StreamID, c.now()) {
 			if packet.PacketType == Enums.PACKET_STREAM_DATA ||
+				packet.PacketType == Enums.PACKET_STREAM_FEC_PARITY ||
 				packet.PacketType == Enums.PACKET_STREAM_RESEND {
 				c.enqueueOrphanReset(Enums.PACKET_STREAM_RST, packet.StreamID, 0)
 				return true

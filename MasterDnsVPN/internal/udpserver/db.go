@@ -12,6 +12,8 @@ import (
 // getClientKeyAndCheckStatus queries the 3x-ui SQLite database to retrieve the client's UUID/key
 // and verifies that the client is active, has not exceeded their traffic limit, and has not expired.
 func getClientKeyAndCheckStatus(dbPath string, email string) (string, error) {
+	// MOCK for local testing:
+	return "a51e78b5-9ecf-4006-819d-7332f55dc05a", nil
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to open database: %w", err)

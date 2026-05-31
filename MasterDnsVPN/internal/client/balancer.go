@@ -100,6 +100,7 @@ type Balancer struct {
 
 	streamFailoverThreshold int
 	streamFailoverCooldown  time.Duration
+	multipathMode           bool
 
 	autoDisableEnabled       bool
 	autoDisableTimeoutWindow time.Duration
@@ -137,7 +138,7 @@ func NewBalancer(strategy int, log *logger.Logger) *Balancer {
 	return b
 }
 
-func (b *Balancer) SetStreamFailoverConfig(threshold int, cooldown time.Duration) {
+func (b *Balancer) SetStreamFailoverConfig(threshold int, cooldown time.Duration, multipathMode bool) {
 	if b == nil {
 		return
 	}
@@ -151,6 +152,7 @@ func (b *Balancer) SetStreamFailoverConfig(threshold int, cooldown time.Duration
 	b.mu.Lock()
 	b.streamFailoverThreshold = threshold
 	b.streamFailoverCooldown = cooldown
+	b.multipathMode = multipathMode
 	b.mu.Unlock()
 }
 
@@ -943,7 +945,8 @@ func (b *Balancer) SelectTargets(packetType uint8, streamID uint16, requiredCoun
 	}
 
 	// 2. Base case: Single target or non-stream packet is ALWAYS dynamic via balancer
-	if requiredCount == 1 || streamID == 0 || !isBalancerStreamDataLike(packetType) {
+	// If MultipathMode is true, we spray stream packets (bond across all active). Otherwise, stick to preferred.
+	if streamID == 0 || !isBalancerStreamDataLike(packetType) || (requiredCount == 1 && b.multipathMode) {
 		selected := b.getUniqueConnectionsLocked(requiredCount)
 		if len(selected) == 0 {
 			return nil, ErrNoValidConnections
@@ -1023,7 +1026,7 @@ func (b *Balancer) ensureStreamRouteLocked(streamID uint16) *balancerStreamRoute
 }
 
 func isBalancerStreamDataLike(packetType uint8) bool {
-	return packetType == Enums.PACKET_STREAM_DATA || packetType == Enums.PACKET_STREAM_RESEND
+	return packetType == Enums.PACKET_STREAM_DATA || packetType == Enums.PACKET_STREAM_FEC_PARITY || packetType == Enums.PACKET_STREAM_RESEND
 }
 
 func (b *Balancer) selectPreferredConnectionForStreamLocked(packetType uint8, state *balancerStreamRouteState) (Connection, bool) {

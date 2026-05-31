@@ -191,9 +191,9 @@ func buildTXTQuestionPacketPrepared(qname []byte, qType uint16, ednsUDPSize uint
 	return packet
 }
 
-func BuildTXTResponsePacket(questionPacket []byte, answerName string, answerPayloads [][]byte) ([]byte, error) {
+func BuildTXTResponsePacket(questionPacket []byte, answerName string, answerPayloads [][]byte, enableEDNS0 bool) ([]byte, error) {
 	if len(answerPayloads) == 1 {
-		return buildSingleTXTResponsePacket(questionPacket, answerName, answerPayloads[0])
+		return buildSingleTXTResponsePacket(questionPacket, answerName, answerPayloads[0], enableEDNS0)
 	}
 
 	if len(questionPacket) < dnsHeaderSize {
@@ -201,8 +201,11 @@ func BuildTXTResponsePacket(questionPacket []byte, answerName string, answerPayl
 	}
 
 	header := parseHeader(questionPacket)
-	questionBytes, questionCount, questionEndOffset := extractQuestionSection(questionPacket, header)
-	optStart, optLen := findOPTRecordRange(questionPacket, header, questionEndOffset)
+	questionBytes, questionCount, _ := extractQuestionSection(questionPacket, header)
+	optLen := 0
+	if enableEDNS0 {
+		optLen = 11
+	}
 
 	nameBytes, err := responseAnswerNameBytes(questionPacket, answerName)
 	if err != nil {
@@ -232,7 +235,7 @@ func BuildTXTResponsePacket(questionPacket []byte, answerName string, answerPayl
 	firstAnswerNameOffset := offset
 
 	for i, payload := range answerPayloads {
-		if useAnswerNameCompression && i > 0 && firstAnswerNameOffset <= 0x3FFF {
+		if useAnswerNameCompression && i > 0 && firstAnswerNameOffset <= 0x3FFF && len(nameBytes) > 2 {
 			binary.BigEndian.PutUint16(response[offset:offset+2], uint16(0xC000|firstAnswerNameOffset))
 			offset += 2
 		} else {
@@ -247,13 +250,20 @@ func BuildTXTResponsePacket(questionPacket []byte, answerName string, answerPayl
 	}
 
 	if optLen > 0 {
-		copy(response[offset:], questionPacket[optStart:optStart+optLen])
+		response[offset] = 0x00
+		offset++
+		binary.BigEndian.PutUint16(response[offset:offset+2], Enums.DNS_RECORD_TYPE_OPT)
+		offset += 2
+		binary.BigEndian.PutUint16(response[offset:offset+2], 4096)
+		offset += 2
+		offset += 4
+		binary.BigEndian.PutUint16(response[offset:offset+2], 0)
 	}
 
 	return response, nil
 }
 
-func BuildVPNResponsePacket(questionPacket []byte, answerName string, packet VpnProto.Packet, baseEncode bool) ([]byte, error) {
+func BuildVPNResponsePacket(questionPacket []byte, answerName string, packet VpnProto.Packet, baseEncode bool, enableEDNS0 bool) ([]byte, error) {
 	rawFrame, err := VpnProto.BuildRawAuto(VpnProto.BuildOptions{
 		SessionID:       packet.SessionID,
 		PacketType:      packet.PacketType,
@@ -275,7 +285,7 @@ func BuildVPNResponsePacket(questionPacket []byte, answerName string, packet Vpn
 		maxChunk = maxTXTEncodedChunk
 	}
 	if len(rawFrame) <= maxChunk {
-		return buildSingleTXTResponsePacket(questionPacket, answerName, buildTXTAnswerChunk(rawFrame, baseEncode))
+		return buildSingleTXTResponsePacket(questionPacket, answerName, buildTXTAnswerChunk(rawFrame, baseEncode), enableEDNS0)
 	}
 
 	answerPayloads, err := buildTXTAnswerChunks(rawFrame, baseEncode)
@@ -283,17 +293,20 @@ func BuildVPNResponsePacket(questionPacket []byte, answerName string, packet Vpn
 		return nil, err
 	}
 
-	return BuildTXTResponsePacket(questionPacket, answerName, answerPayloads)
+	return BuildTXTResponsePacket(questionPacket, answerName, answerPayloads, enableEDNS0)
 }
 
-func buildSingleTXTResponsePacket(questionPacket []byte, answerName string, answerPayload []byte) ([]byte, error) {
+func buildSingleTXTResponsePacket(questionPacket []byte, answerName string, answerPayload []byte, enableEDNS0 bool) ([]byte, error) {
 	if len(questionPacket) < dnsHeaderSize {
 		return nil, ErrPacketTooShort
 	}
 
 	header := parseHeader(questionPacket)
-	questionBytes, questionCount, questionEndOffset := extractQuestionSection(questionPacket, header)
-	optStart, optLen := findOPTRecordRange(questionPacket, header, questionEndOffset)
+	questionBytes, questionCount, _ := extractQuestionSection(questionPacket, header)
+	optLen := 0
+	if enableEDNS0 {
+		optLen = 11
+	}
 
 	nameBytes, err := responseAnswerNameBytes(questionPacket, answerName)
 	if err != nil {
@@ -319,16 +332,23 @@ func buildSingleTXTResponsePacket(questionPacket []byte, answerName string, answ
 	offset += copy(response[offset:], answerPayload)
 
 	if optLen > 0 {
-		copy(response[offset:], questionPacket[optStart:optStart+optLen])
+		response[offset] = 0x00
+		offset++
+		binary.BigEndian.PutUint16(response[offset:offset+2], Enums.DNS_RECORD_TYPE_OPT)
+		offset += 2
+		binary.BigEndian.PutUint16(response[offset:offset+2], 4096)
+		offset += 2
+		offset += 4
+		binary.BigEndian.PutUint16(response[offset:offset+2], 0)
 	}
 
 	return response, nil
 }
 
 func responseAnswerNameBytes(questionPacket []byte, answerName string) ([]byte, error) {
-	rawName, parsedName, ok := extractFirstQuestionNameWire(questionPacket)
+	_, parsedName, ok := extractFirstQuestionNameWire(questionPacket)
 	if ok && sameDNSName(parsedName, answerName) {
-		return rawName, nil
+		return []byte{0xC0, 0x0C}, nil
 	}
 	return encodeDNSNameStrict(answerName)
 }

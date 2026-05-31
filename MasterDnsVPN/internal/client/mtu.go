@@ -319,6 +319,16 @@ func (c *Client) RunInitialMTUTests(ctx context.Context) error {
 		return ErrNoValidConnections
 	}
 
+	if c.cfg.MinUploadMTU == c.cfg.MaxUploadMTU && c.cfg.MinDownloadMTU == c.cfg.MaxDownloadMTU && c.cfg.MinUploadMTU > 0 && c.cfg.MinDownloadMTU > 0 {
+		c.log.Infof("📏 [MTU] Detected fixed MTU configuration. Bypassing network probing. UP=%d, DOWN=%d", c.cfg.MinUploadMTU, c.cfg.MinDownloadMTU)
+		scanConnections := c.balancer.AllConnections()
+		for _, conn := range scanConnections {
+			c.balancer.ApplyMTUProbeResult(conn.Key, c.cfg.MinUploadMTU, c.encodedCharsForPayload(c.cfg.MinUploadMTU), c.cfg.MinDownloadMTU, 10*time.Millisecond, true)
+		}
+		c.applySyncedMTUState(c.cfg.MinUploadMTU, c.cfg.MinDownloadMTU, c.encodedCharsForPayload(c.cfg.MinUploadMTU))
+		return nil
+	}
+
 	scanConnections := c.balancer.AllConnections()
 	if len(scanConnections) == 0 {
 		return ErrNoValidConnections
@@ -1151,82 +1161,34 @@ func (c *Client) sendUploadMTUProbe(ctx context.Context, conn Connection, probeT
 	startedAt := time.Now()
 	response, err := c.exchangeUDPQuery(probeTransport, query, timeout)
 	if err != nil {
-		c.logMTUProbe(
-			options.IsRetry,
-			options.Quiet,
-			"<yellow>⚠️ Upload test failed: Upload MTU <cyan>%d</cyan> bytes via <cyan>%s</cyan> for <cyan>%s</cyan></yellow>",
-			mtuSize,
-			conn.ResolverLabel,
-			conn.Domain,
-		)
+		c.logMTUProbe(options.IsRetry, options.Quiet, "<yellow>⚠️ Upload test failed (exchange error: %v): Upload MTU <cyan>%d</cyan> bytes via <cyan>%s</cyan> for <cyan>%s</cyan></yellow>", err, mtuSize, conn.ResolverLabel, conn.Domain)
 		return false, 0, nil
 	}
 	rtt := time.Since(startedAt)
 
 	packet, err := DnsParser.ExtractVPNResponse(response, useBase64)
 	if err != nil {
-		c.logMTUProbe(
-			options.IsRetry,
-			options.Quiet,
-			"<yellow>⚠️ Upload test failed: Upload MTU <cyan>%d</cyan> bytes via <cyan>%s</cyan> for <cyan>%s</cyan></yellow>",
-			mtuSize,
-			conn.ResolverLabel,
-			conn.Domain,
-		)
+		c.logMTUProbe(options.IsRetry, options.Quiet, "<yellow>⚠️ Upload test failed (extract error: %v): Upload MTU <cyan>%d</cyan> bytes via <cyan>%s</cyan> for <cyan>%s</cyan></yellow>", err, mtuSize, conn.ResolverLabel, conn.Domain)
 		return false, 0, nil
 	}
 	if packet.PacketType != Enums.PACKET_MTU_UP_RES {
-		c.logMTUProbe(
-			options.IsRetry,
-			options.Quiet,
-			"<yellow>⚠️ Upload test failed: Upload MTU <cyan>%d</cyan> bytes via <cyan>%s</cyan> for <cyan>%s</cyan></yellow>",
-			mtuSize,
-			conn.ResolverLabel,
-			conn.Domain,
-		)
+		c.logMTUProbe(options.IsRetry, options.Quiet, "<yellow>⚠️ Upload test failed (type mismatch %d != %d): Upload MTU <cyan>%d</cyan> bytes via <cyan>%s</cyan> for <cyan>%s</cyan></yellow>", packet.PacketType, Enums.PACKET_MTU_UP_RES, mtuSize, conn.ResolverLabel, conn.Domain)
 		return false, 0, nil
 	}
 	if len(packet.Payload) != 6 {
-		c.logMTUProbe(
-			options.IsRetry,
-			options.Quiet,
-			"<yellow>⚠️ Upload test failed: Upload MTU <cyan>%d</cyan> bytes via <cyan>%s</cyan> for <cyan>%s</cyan></yellow>",
-			mtuSize,
-			conn.ResolverLabel,
-			conn.Domain,
-		)
+		c.logMTUProbe(options.IsRetry, options.Quiet, "<yellow>⚠️ Upload test failed (payload len %d != 6): Upload MTU <cyan>%d</cyan> bytes via <cyan>%s</cyan> for <cyan>%s</cyan></yellow>", len(packet.Payload), mtuSize, conn.ResolverLabel, conn.Domain)
 		return false, 0, nil
 	}
 	if binary.BigEndian.Uint32(packet.Payload[:mtuProbeCodeLength]) != code {
-		c.logMTUProbe(
-			options.IsRetry,
-			options.Quiet,
-			"<yellow>⚠️ Upload test failed: Upload MTU <cyan>%d</cyan> bytes via <cyan>%s</cyan> for <cyan>%s</cyan></yellow>",
-			mtuSize,
-			conn.ResolverLabel,
-			conn.Domain,
-		)
+		c.logMTUProbe(options.IsRetry, options.Quiet, "<yellow>⚠️ Upload test failed (code mismatch %d != %d): Upload MTU <cyan>%d</cyan> bytes via <cyan>%s</cyan> for <cyan>%s</cyan></yellow>", binary.BigEndian.Uint32(packet.Payload[:mtuProbeCodeLength]), code, mtuSize, conn.ResolverLabel, conn.Domain)
 		return false, 0, nil
 	}
-	ok := int(binary.BigEndian.Uint16(packet.Payload[mtuProbeCodeLength:mtuProbeCodeLength+2])) == mtuSize
+	serverEchoSize := int(binary.BigEndian.Uint16(packet.Payload[mtuProbeCodeLength:mtuProbeCodeLength+2]))
+	ok := serverEchoSize == mtuSize
 	if ok {
-		c.logMTUProbe(
-			options.IsRetry,
-			options.Quiet,
-			"<yellow>🟢 Upload test passed: Upload MTU <green>%d</green> bytes via <cyan>%s</cyan> for <cyan>%s</cyan></yellow>",
-			mtuSize,
-			conn.ResolverLabel,
-			conn.Domain,
-		)
+		c.logMTUProbe(options.IsRetry, options.Quiet, "<yellow>🟢 Upload test passed: Upload MTU <green>%d</green> bytes via <cyan>%s</cyan> for <cyan>%s</cyan></yellow>", mtuSize, conn.ResolverLabel, conn.Domain)
 	} else {
-		c.logMTUProbe(
-			options.IsRetry,
-			options.Quiet,
-			"<yellow>⚠️ Upload test failed: Upload MTU <cyan>%d</cyan> bytes via <cyan>%s</cyan> for <cyan>%s</cyan></yellow>",
-			mtuSize,
-			conn.ResolverLabel,
-			conn.Domain,
-		)
+		c.logMTUProbe(options.IsRetry, options.Quiet, "<yellow>⚠️ Upload test failed (size mismatch %d != %d): Upload MTU <cyan>%d</cyan> bytes via <cyan>%s</cyan> for <cyan>%s</cyan></yellow>", serverEchoSize, mtuSize, mtuSize, conn.ResolverLabel, conn.Domain)
 	}
 	return ok, rtt, nil
 }

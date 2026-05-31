@@ -10,7 +10,7 @@ package socksproto
 import "testing"
 
 func TestParseTargetPayloadIPv4(t *testing.T) {
-	target, err := ParseTargetPayload([]byte{0x01, 127, 0, 0, 1, 0x01, 0xBB})
+	target, err := ParseTargetPayload([]byte{0x01, 0x01, 127, 0, 0, 1, 0x01, 0xBB})
 	if err != nil {
 		t.Fatalf("ParseTargetPayload returned error: %v", err)
 	}
@@ -20,7 +20,7 @@ func TestParseTargetPayloadIPv4(t *testing.T) {
 }
 
 func TestParseTargetPayloadDomain(t *testing.T) {
-	target, err := ParseTargetPayload([]byte{0x03, 0x0B, 'e', 'x', 'a', 'm', 'p', 'l', 'e', '.', 'c', 'o', 'm', 0x00, 0x35})
+	target, err := ParseTargetPayload([]byte{0x01, 0x03, 0x0B, 'e', 'x', 'a', 'm', 'p', 'l', 'e', '.', 'c', 'o', 'm', 0x00, 0x35})
 	if err != nil {
 		t.Fatalf("ParseTargetPayload returned error: %v", err)
 	}
@@ -30,7 +30,7 @@ func TestParseTargetPayloadDomain(t *testing.T) {
 }
 
 func TestParseTargetPayloadRejectsUnsupportedType(t *testing.T) {
-	if _, err := ParseTargetPayload([]byte{0x05, 0x00, 0x35}); err != ErrUnsupportedAddressType {
+	if _, err := ParseTargetPayload([]byte{0x01, 0x05, 0x00, 0x35}); err != ErrUnsupportedAddressType {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

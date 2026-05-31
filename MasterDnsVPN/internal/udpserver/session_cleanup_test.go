@@ -77,7 +77,7 @@ func TestCleanupClosedSessionClosesStreamsAndClearsQueues(t *testing.T) {
 	stream.UpstreamConn = upstream
 	stream.Connected = true
 
-	if !stream.enqueueInboundData(Enums.PACKET_STREAM_DATA, 1, 0, []byte("inbound")) {
+	if !stream.enqueueInboundData(Enums.PACKET_STREAM_DATA, 1, 0, 0, []byte("inbound")) {
 		t.Fatal("expected inbound packet to queue")
 	}
 	if !stream.PushTXPacket(Enums.DefaultPacketPriority(Enums.PACKET_STREAM_RST), Enums.PACKET_STREAM_RST, 12, 0, 0, 0, 0, nil) {

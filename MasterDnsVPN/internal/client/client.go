@@ -224,12 +224,36 @@ func Bootstrap(configPath string, logPath string, overrides config.ClientConfigO
 }
 
 func BootstrapLoadedConfig(cfg config.ClientConfig, logPath string) (*Client, error) {
+	// Оптимизация параметров ARQ RTO и MTU для максимальной отзывчивости пакетов
+	if cfg.ARQInitialRTOSeconds > 0.3 {
+		cfg.ARQInitialRTOSeconds = 0.3
+	}
+	if cfg.ARQMaxRTOSeconds > 1.5 {
+		cfg.ARQMaxRTOSeconds = 1.5
+	}
+	if cfg.ARQControlInitialRTOSeconds > 0.2 {
+		cfg.ARQControlInitialRTOSeconds = 0.2
+	}
+	if cfg.ARQControlMaxRTOSeconds > 1.0 {
+		cfg.ARQControlMaxRTOSeconds = 1.0
+	}
+
+	// Обеспечение корректных пределов MTU для скачивания (минимум 512 байт для снижения фрагментации)
+	if cfg.MinDownloadMTU > 0 && cfg.MinDownloadMTU < 512 {
+		cfg.MinDownloadMTU = 512
+	}
+	if cfg.MaxDownloadMTU > 0 && cfg.MaxDownloadMTU < 512 {
+		cfg.MaxDownloadMTU = 512
+	}
+
 	var log *logger.Logger
 	if logPath != "" {
 		log = logger.NewWithFile("MasterDnsVPN Client", cfg.LogLevel, logPath)
 	} else {
 		log = logger.New("MasterDnsVPN Client", cfg.LogLevel)
 	}
+
+	log.Infof("📐 [CONFIG] Upload MTU Range: Min=%d, Max=%d | Download MTU Range: Min=%d, Max=%d | PacketDuplicationCount=%d | ARQWindowSize=%d", cfg.MinUploadMTU, cfg.MaxUploadMTU, cfg.MinDownloadMTU, cfg.MaxDownloadMTU, cfg.PacketDuplicationCount, cfg.ARQWindowSize)
 
 	codec, err := security.NewCodec(cfg.DataEncryptionMethod, cfg.EncryptionKey)
 	if err != nil {
@@ -321,7 +345,7 @@ func New(cfg config.ClientConfig, log *logger.Logger, codec *security.Codec) *Cl
 		c.streamResolverFailoverCooldown = time.Second
 	}
 
-	c.balancer.SetStreamFailoverConfig(c.streamResolverFailoverResendThreshold, c.streamResolverFailoverCooldown)
+	c.balancer.SetStreamFailoverConfig(c.streamResolverFailoverResendThreshold, c.streamResolverFailoverCooldown, cfg.MultipathMode)
 	c.balancer.SetAutoDisableConfig(
 		cfg.AutoDisableTimeoutServers,
 		time.Duration(cfg.AutoDisableTimeoutWindowSeconds*float64(time.Second)),
@@ -502,6 +526,7 @@ func (c *Client) HandleStreamPacket(packet VpnProto.Packet) error {
 	arqObj, ok := s.Stream.(*arq.ARQ)
 	if !ok {
 		if (packet.PacketType == Enums.PACKET_STREAM_DATA ||
+			packet.PacketType == Enums.PACKET_STREAM_FEC_PARITY ||
 			packet.PacketType == Enums.PACKET_STREAM_RESEND ||
 			packet.PacketType == Enums.PACKET_STREAM_DATA_NACK) && !c.isRecentlyClosedStream(packet.StreamID, c.now()) {
 			c.enqueueOrphanReset(Enums.PACKET_STREAM_RST, packet.StreamID, 0)
@@ -510,7 +535,7 @@ func (c *Client) HandleStreamPacket(packet VpnProto.Packet) error {
 	}
 
 	switch packet.PacketType {
-	case Enums.PACKET_STREAM_DATA, Enums.PACKET_STREAM_RESEND:
+	case Enums.PACKET_STREAM_DATA, Enums.PACKET_STREAM_FEC_PARITY, Enums.PACKET_STREAM_RESEND:
 		if arqObj.IsClosed() {
 			c.enqueueOrphanReset(Enums.PACKET_STREAM_RST, packet.StreamID, 0)
 			return nil

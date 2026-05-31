@@ -10,6 +10,7 @@ package logger
 import (
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"strings"
 	"sync"
@@ -153,8 +154,13 @@ func (l *Logger) logf(level int, format string, args ...any) {
 			levelText = coloredLevelTexts[level]
 		}
 
-		consoleLine := ts + " " + appName + " " + levelText + " " + finalMsg + "\n"
-		_, _ = io.WriteString(l.consoleWriter, consoleLine)
+		if l.consoleWriter == os.Stdout || l.consoleWriter == os.Stderr {
+			log.Printf("%s %s %s", appName, levelText, finalMsg)
+			printAndroidLog(level, l.name, plainMsg)
+		} else {
+			consoleLine := ts + " " + appName + " " + levelText + " " + finalMsg + "\n"
+			_, _ = io.WriteString(l.consoleWriter, consoleLine)
+		}
 	}
 }
 

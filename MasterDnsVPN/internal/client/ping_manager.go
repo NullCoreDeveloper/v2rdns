@@ -123,6 +123,17 @@ func (p *PingManager) nextInterval(nowNano int64) time.Duration {
 
 	coolThresholdNano := int64(p.client.cfg.PingCoolThreshold())
 	coldThresholdNano := int64(p.client.cfg.PingColdThreshold())
+
+	// Если есть активные SOCKS5-соединения (ID > 0), ограничиваем интервал пинга до LazyInterval (750ms),
+	// чтобы входящие пакеты (статусы доставки, уведомления о наборе текста) доставлялись мгновенно.
+	p.client.streamsMu.RLock()
+	hasActiveSocks := len(p.client.active_streams) > 1
+	p.client.streamsMu.RUnlock()
+
+	if hasActiveSocks {
+		return p.client.cfg.PingLazyInterval()
+	}
+
 	switch {
 	case minIdle < coolThresholdNano:
 		return p.client.cfg.PingLazyInterval()

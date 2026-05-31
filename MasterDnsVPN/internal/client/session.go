@@ -575,8 +575,16 @@ func (c *Client) applySyncedMTUState(uploadMTU int, downloadMTU int, uploadChars
 		return
 	}
 	c.syncedUploadMTU = uploadMTU
-	c.syncedDownloadMTU = downloadMTU
 	c.syncedUploadChars = uploadChars
+
+	// Гарантируем, что download MTU составляет минимум 512 байт во избежание сильной фрагментации и зависаний
+	if downloadMTU > 0 && downloadMTU < 512 {
+		if c.log != nil {
+			c.log.Warnf("⚠️ [MTU] Synced download MTU (%d) is too low. Automatically raising to 512 for optimal packet delivery.", downloadMTU)
+		}
+		downloadMTU = 512
+	}
+	c.syncedDownloadMTU = downloadMTU
 	c.safeUploadMTU = computeSafeUploadMTU(uploadMTU, c.mtuCryptoOverhead)
 	c.maxPackedBlocks = VpnProto.CalculateMaxPackedBlocks(c.safeUploadMTU, 80, c.cfg.MaxPacketsPerBatch)
 	c.applySessionCompressionPolicy()

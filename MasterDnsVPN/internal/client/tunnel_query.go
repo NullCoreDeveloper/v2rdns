@@ -20,8 +20,12 @@ type preparedTunnelDomain struct {
 	qname      []byte
 }
 
-func buildTunnelTXTQuestionBytes(domain string, encoded []byte) ([]byte, error) {
-	return DnsParser.BuildTunnelTXTQuestionPacket(domain, encoded, Enums.DNS_RECORD_TYPE_TXT, EDnsSafeUDPSize)
+func buildTunnelTXTQuestionBytes(domain string, encoded []byte, enableEDNS0 bool) ([]byte, error) {
+	ednsSize := uint16(0)
+	if enableEDNS0 {
+		ednsSize = EDnsSafeUDPSize
+	}
+	return DnsParser.BuildTunnelTXTQuestionPacket(domain, encoded, Enums.DNS_RECORD_TYPE_TXT, ednsSize)
 }
 
 func prepareTunnelDomain(domain string) (preparedTunnelDomain, error) {
@@ -42,7 +46,7 @@ func (c *Client) buildTunnelTXTQueryRaw(domain string, options VpnProto.BuildOpt
 	if err != nil {
 		return nil, err
 	}
-	return buildTunnelTXTQuestionBytes(domain, encoded)
+	return buildTunnelTXTQuestionBytes(domain, encoded, c.cfg.EnableEDNS0)
 }
 
 func (c *Client) buildEncodedAutoWithCompressionTrace(options VpnProto.BuildOptions) ([]byte, error) {
@@ -63,5 +67,5 @@ func (c *Client) buildTunnelTXTQuery(domain string, options VpnProto.BuildOption
 	if err != nil {
 		return nil, err
 	}
-	return buildTunnelTXTQuestionBytes(domain, encoded)
+	return buildTunnelTXTQuestionBytes(domain, encoded, c.cfg.EnableEDNS0)
 }

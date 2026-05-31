@@ -45,10 +45,18 @@ func buildNoDataResponseLite(packet []byte, parsed DnsParser.LitePacket) []byte 
 }
 
 func (s *Server) buildNoDataResponseLogged(packet []byte, reason string) []byte {
+	if s.log != nil && s.log.Enabled(logger.LevelDebug) {
+		s.log.Debugf("Dropping packet (NoData). Reason: %s", reason)
+	}
 	return buildNoDataResponse(packet)
 }
 
 func (s *Server) buildNoDataResponseLiteLogged(packet []byte, parsed DnsParser.LitePacket, reason string) []byte {
+	if s.log != nil && s.log.Enabled(logger.LevelDebug) {
+		if reason != "domain-match-no-data" && reason != "vpn-proto-parse-failed" {
+			s.log.Debugf("Dropping packet, returning NoData. Reason: %s", reason)
+		}
+	}
 	return buildNoDataResponseLite(packet, parsed)
 }
 

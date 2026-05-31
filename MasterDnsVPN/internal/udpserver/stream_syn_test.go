@@ -282,7 +282,7 @@ func TestHandleSOCKS5SynFastPathsAlreadyConnectedStream(t *testing.T) {
 	}
 
 	packet := packetWithSession(Enums.PACKET_SOCKS5_SYN, record.ID, record.Cookie, stream.ID)
-	packet.Payload = []byte{0x01, 149, 154, 167, 92, 0x01, 0xBB}
+	packet.Payload = []byte{0x01, 0x01, 149, 154, 167, 92, 0x01, 0xBB}
 	packet.TotalFragments = 1
 	if !s.handleSOCKS5SynRequest(packet, viewForRecord(record)) {
 		t.Fatal("expected connected SOCKS5 stream SYN to be handled")
@@ -316,7 +316,7 @@ func TestProcessDeferredSOCKS5SynDoesNotAttachAfterCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	packet := packetWithSession(Enums.PACKET_SOCKS5_SYN, record.ID, record.Cookie, 17)
-	packet.Payload = []byte{0x01, 149, 154, 167, 92, 0x01, 0xBB}
+	packet.Payload = []byte{0x01, 0x01, 149, 154, 167, 92, 0x01, 0xBB}
 	packet.TotalFragments = 1
 	go func() {
 		defer close(done)
@@ -381,7 +381,7 @@ func TestHandleSOCKS5SynFastPathRejectsDifferentTarget(t *testing.T) {
 	stream.mu.Unlock()
 
 	packet := packetWithSession(Enums.PACKET_SOCKS5_SYN, record.ID, record.Cookie, stream.ID)
-	packet.Payload = []byte{0x01, 149, 154, 167, 92, 0x00, 0x50}
+	packet.Payload = []byte{0x01, 0x01, 149, 154, 167, 92, 0x00, 0x50}
 	packet.TotalFragments = 1
 	if !s.handleSOCKS5SynRequest(packet, viewForRecord(record)) {
 		t.Fatal("expected mismatched SOCKS5 target to be handled")
@@ -405,7 +405,7 @@ func TestHandleSOCKS5SynImmediateRejectsBlockedTarget(t *testing.T) {
 	}
 
 	packet := packetWithSession(Enums.PACKET_SOCKS5_SYN, record.ID, record.Cookie, stream.ID)
-	packet.Payload = []byte{0x01, 0, 0, 0, 0, 0x01, 0xBB}
+	packet.Payload = []byte{0x01, 0x01, 0, 0, 0, 0, 0x01, 0xBB}
 	packet.TotalFragments = 1
 	if !s.handleSOCKS5SynRequest(packet, viewForRecord(record)) {
 		t.Fatal("expected blocked target SOCKS5 SYN to be handled")
@@ -723,7 +723,7 @@ func TestProcessDeferredSOCKS5SynSkipsDialForRecentlyClosedStream(t *testing.T) 
 	}
 
 	packet := packetWithSession(Enums.PACKET_SOCKS5_SYN, record.ID, record.Cookie, 10)
-	packet.Payload = []byte{0x01, 127, 0, 0, 1, 0x01, 0xBB}
+	packet.Payload = []byte{0x01, 0x01, 127, 0, 0, 1, 0x01, 0xBB}
 	packet.TotalFragments = 1
 
 	s.processDeferredSOCKS5Syn(context.Background(), packet)
@@ -744,7 +744,7 @@ func TestProcessDeferredSOCKS5SynClearsQueuedDuplicatesAfterConnectFailure(t *te
 	}
 
 	packet := packetWithSession(Enums.PACKET_SOCKS5_SYN, record.ID, record.Cookie, 15)
-	packet.Payload = []byte{0x01, 127, 0, 0, 1, 0x01, 0xBB}
+	packet.Payload = []byte{0x01, 0x01, 127, 0, 0, 1, 0x01, 0xBB}
 	packet.TotalFragments = 1
 
 	s.processDeferredSOCKS5Syn(context.Background(), packet)
@@ -922,7 +922,7 @@ func TestProcessDeferredSOCKS5SynTimesOutBlockedDial(t *testing.T) {
 	}
 
 	packet := packetWithSession(Enums.PACKET_SOCKS5_SYN, record.ID, record.Cookie, 5)
-	packet.Payload = []byte{0x01, 149, 154, 167, 92, 0x01, 0xBB}
+	packet.Payload = []byte{0x01, 0x01, 149, 154, 167, 92, 0x01, 0xBB}
 	packet.TotalFragments = 1
 	startedAt := time.Now()
 	s.processDeferredSOCKS5Syn(context.Background(), packet)

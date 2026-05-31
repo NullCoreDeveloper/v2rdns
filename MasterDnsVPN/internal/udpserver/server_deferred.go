@@ -344,6 +344,115 @@ func (s *Server) processDeferredSOCKS5Syn(ctx context.Context, vpnPacket VpnProt
 		return
 	}
 
+	if target.Cmd == 0x03 { // SOCKS5_CMD_UDP_ASSOCIATE
+		udpConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4zero, Port: 0})
+		if err != nil {
+			packetType := uint8(Enums.PACKET_SOCKS5_CONNECT_FAIL)
+			stream.ARQ.SendControlPacketWithTTL(
+				packetType,
+				vpnPacket.SequenceNum,
+				0,
+				0,
+				nil,
+				Enums.DefaultPacketPriority(packetType),
+				true,
+				nil,
+				s.cfg.StreamFailurePacketTTL(),
+			)
+			s.finalizeStreamArtifacts(vpnPacket.SessionID, vpnPacket.StreamID)
+			return
+		}
+
+		if !stream.attachUpstreamConn(udpConn, target.Host, target.Port, "CONNECTED") {
+			_ = udpConn.Close()
+			s.finalizeStreamArtifacts(vpnPacket.SessionID, vpnPacket.StreamID)
+			return
+		}
+
+		stream.ARQ.OnDatagram = func(payload []byte) {
+			if len(payload) == 0 {
+				return
+			}
+			t, err := SocksProto.ParseTargetPayload(payload)
+			if err != nil {
+				return
+			}
+			addr := t.Host
+			port := t.Port
+			
+			offset := 2
+			switch payload[1] {
+			case SocksProto.AddressTypeIPv4:
+				offset += 4
+			case SocksProto.AddressTypeDomain:
+				if len(payload) > 2 {
+					offset += 1 + int(payload[2])
+				}
+			case SocksProto.AddressTypeIPv6:
+				offset += 16
+			}
+			offset += 2 // Port
+			
+			if len(payload) > offset {
+				targetAddr, err := net.ResolveUDPAddr("udp", net.JoinHostPort(addr, strconv.Itoa(int(port))))
+				if err == nil {
+					_, _ = udpConn.WriteToUDP(payload[offset:], targetAddr)
+					if s.log != nil {
+						s.log.Debugf("📡 <green>[UDP-TX]</green> Sent <cyan>%d bytes</cyan> to <cyan>%s</cyan>", len(payload)-offset, targetAddr.String())
+					}
+				}
+			}
+		}
+
+		go func() {
+			buf := make([]byte, 8192)
+			for {
+				_ = udpConn.SetReadDeadline(time.Now().Add(5 * time.Minute))
+				n, peerAddr, err := udpConn.ReadFromUDP(buf)
+				if err != nil {
+					return
+				}
+				if n > 0 && peerAddr != nil {
+					var targetPayload []byte
+					targetPayload = append(targetPayload, 0x00) // dummy CMD
+					if ip4 := peerAddr.IP.To4(); ip4 != nil {
+						targetPayload = append(targetPayload, SocksProto.AddressTypeIPv4)
+						targetPayload = append(targetPayload, ip4...)
+					} else {
+						targetPayload = append(targetPayload, SocksProto.AddressTypeIPv6)
+						targetPayload = append(targetPayload, peerAddr.IP.To16()...)
+					}
+					
+					pBuf := make([]byte, 2)
+					pBuf[0] = byte(peerAddr.Port >> 8)
+					pBuf[1] = byte(peerAddr.Port)
+					targetPayload = append(targetPayload, pBuf...)
+					targetPayload = append(targetPayload, buf[:n]...)
+
+					stream.ARQ.SendDatagram(targetPayload)
+					if s.log != nil {
+						s.log.Debugf("📡 <green>[UDP-RX]</green> Received <cyan>%d bytes</cyan> from <cyan>%s</cyan>", n, peerAddr.String())
+					}
+				}
+			}
+		}()
+
+		stream.ARQ.SetIOReady(true)
+		stream.ARQ.SendControlPacketWithTTL(
+			Enums.PACKET_SOCKS5_CONNECTED,
+			vpnPacket.SequenceNum,
+			0,
+			0,
+			nil,
+			Enums.DefaultPacketPriority(Enums.PACKET_SOCKS5_CONNECTED),
+			true,
+			nil,
+			s.cfg.StreamResultPacketTTL(),
+		)
+		s.finalizeStreamArtifacts(vpnPacket.SessionID, vpnPacket.StreamID)
+		return
+	}
+
 	attemptTimeout := s.deferredConnectAttemptTimeout()
 	attemptCtx, cancelAttempt := context.WithTimeout(ctx, attemptTimeout)
 	defer cancelAttempt()

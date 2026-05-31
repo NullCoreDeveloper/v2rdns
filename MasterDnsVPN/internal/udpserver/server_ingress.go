@@ -9,14 +9,21 @@ import (
 	DnsParser "masterdnsvpn-go/internal/dnsparser"
 	domainMatcher "masterdnsvpn-go/internal/domainmatcher"
 	Enums "masterdnsvpn-go/internal/enums"
+	"masterdnsvpn-go/internal/logger"
 	"masterdnsvpn-go/internal/security"
 	VpnProto "masterdnsvpn-go/internal/vpnproto"
 )
 
 func (s *Server) handlePacket(packet []byte) []byte {
+	if s.log != nil && s.log.Enabled(logger.LevelDebug) {
+		s.log.Debugf("Received packet of size %d", len(packet))
+	}
 	parsed, err := DnsParser.ParseDNSRequestLite(packet)
 	if err != nil {
 		if errors.Is(err, DnsParser.ErrNotDNSRequest) || errors.Is(err, DnsParser.ErrPacketTooShort) {
+			if s.log != nil && s.log.Enabled(logger.LevelDebug) {
+				s.log.Debugf("Dropping packet, Not DNS or too short: %v", err)
+			}
 			return nil
 		}
 
@@ -38,6 +45,9 @@ func (s *Server) handlePacket(packet []byte) []byte {
 	}
 
 	if decision.Action == domainMatcher.ActionFormatError || decision.Action == domainMatcher.ActionNoData {
+		if s.log != nil {
+			s.log.Debugf("Domain match rejected: reason=%s, reqName=%s, base=%s, labels=%s, qtype=%d", decision.Reason, decision.RequestName, decision.BaseDomain, decision.Labels, decision.QuestionType)
+		}
 		return s.buildNoDataResponseLiteLogged(packet, parsed, "domain-match-no-data")
 	}
 
@@ -133,6 +143,9 @@ func (s *Server) handleTunnelCandidate(packet []byte, parsed DnsParser.LitePacke
 			return s.buildNoDataResponseLiteLogged(packet, parsed, fmt.Sprintf("post-session-unhandled-%s", Enums.PacketTypeName(vpnPacket.PacketType)))
 		}
 
+		if s.log != nil {
+			s.log.Infof("Pre-session parsed: %s | Stream: %d | Seq: %d | Frag: %d/%d", Enums.PacketTypeName(vpnPacket.PacketType), vpnPacket.StreamID, vpnPacket.SequenceNum, vpnPacket.FragmentID, vpnPacket.TotalFragments)
+		}
 		return s.serveQueuedOrPong(packet, decision.RequestName, validation.record, time.Now())
 	}
 

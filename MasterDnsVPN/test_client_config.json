@@ -1,0 +1,29 @@
+{
+  "PROTOCOL_TYPE": "SOCKS5",
+  "DOMAINS": [
+    "iadmin.aboba.kali9124123s.space"
+  ],
+  "RESOLVERS":[
+    "77.88.8.8",
+    "77.88.8.1",
+    "94.140.14.14",
+    "94.140.15.15",
+    "1.1.1.1",
+    "8.8.8.8"
+  ],
+  "DATA_ENCRYPTION_METHOD": 1,
+  "ENCRYPTION_KEY": "a51e78b5-9ecf-4006-819d-7332f55dc05a",
+  "BASE_ENCODE_DATA": true,
+  
+  "RESOLVER_BALANCING_STRATEGY": 2,
+  "PACKET_DUPLICATION_COUNT": 2,
+  
+  "ARQ_WINDOW_SIZE": 6000,
+  "ARQ_INITIAL_RTO_SECONDS": 0.1,
+  "ARQ_MAX_RTO_SECONDS": 0.5,
+  
+  "MIN_UPLOAD_MTU": 38,
+  "MAX_UPLOAD_MTU": 120,
+  "MIN_DOWNLOAD_MTU": 500,
+  "MAX_DOWNLOAD_MTU": 850
+}

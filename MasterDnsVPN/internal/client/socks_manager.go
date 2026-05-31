@@ -13,10 +13,12 @@ import (
 	"io"
 	"net"
 	"slices"
+	"sync"
 	"time"
 
 	"masterdnsvpn-go/internal/arq"
 	Enums "masterdnsvpn-go/internal/enums"
+	SocksProto "masterdnsvpn-go/internal/socksproto"
 	VpnProto "masterdnsvpn-go/internal/vpnproto"
 )
 
@@ -344,6 +346,7 @@ func (c *Client) handleSOCKSConnect(ctx context.Context, conn net.Conn, addr str
 	c.log.Infof("🔌 <green>New %s TCP CONNECT to <cyan>%s:%d</cyan>, Stream ID: <cyan>%d</cyan></green>", socksLabel, addr, port, streamID)
 
 	var targetPayload []byte
+	targetPayload = append(targetPayload, SOCKS5_CMD_CONNECT)
 	targetPayload = append(targetPayload, atyp)
 	switch atyp {
 	case SOCKS5_ATYP_IPV4:
@@ -445,7 +448,17 @@ func (c *Client) writeSocksConnectResultLocked(s *Stream_client, rep byte) error
 	if s.LocalSocksVersion == SOCKS4_VERSION {
 		err = c.sendSocks4Reply(s.NetConn, rep == SOCKS5_REPLY_SUCCESS)
 	} else {
-		err = c.sendSocksReply(s.NetConn, rep, SOCKS5_ATYP_IPV4, net.IPv4zero, 0)
+		bndAddr := net.IPv4(127, 0, 0, 1)
+		bndPort := uint16(0)
+		if tcpAddr, ok := s.NetConn.LocalAddr().(*net.TCPAddr); ok && tcpAddr != nil {
+			if tcpAddr.IP.IsLoopback() || tcpAddr.IP.IsUnspecified() {
+				bndAddr = net.IPv4(127, 0, 0, 1)
+			} else {
+				bndAddr = tcpAddr.IP
+			}
+			bndPort = uint16(tcpAddr.Port)
+		}
+		err = c.sendSocksReply(s.NetConn, rep, SOCKS5_ATYP_IPV4, bndAddr, bndPort)
 	}
 
 	if err != nil {
@@ -589,6 +602,12 @@ func (c *Client) handleSocksUDPAssociate(ctx context.Context, conn net.Conn, cli
 		replyATYP = SOCKS5_ATYP_IPV6
 	}
 
+	streamID, ok := c.get_new_stream_id()
+	if !ok {
+		_ = c.sendSocksReply(conn, SOCKS5_REPLY_GENERAL_FAILURE, SOCKS5_ATYP_IPV4, net.IPv4zero, 0)
+		return
+	}
+
 	bindAddr := &net.UDPAddr{
 		IP:   net.IPv4zero,
 		Port: 0,
@@ -600,13 +619,80 @@ func (c *Client) handleSocksUDPAssociate(ctx context.Context, conn net.Conn, cli
 	}
 	defer udpConn.Close()
 
+	s := c.new_stream(streamID, conn, nil)
+	if s == nil {
+		_ = c.sendSocksReply(conn, SOCKS5_REPLY_GENERAL_FAILURE, SOCKS5_ATYP_IPV4, net.IPv4zero, 0)
+		return
+	}
+	s.LocalSocksVersion = SOCKS5_VERSION
+
+	arqObj, ok := s.Stream.(*arq.ARQ)
+	if !ok {
+		return
+	}
+
+	arqObj.OnDatagram = func(payload []byte) {
+		if len(payload) > 0 {
+			if c.log != nil {
+				c.log.Debugf("📡 <green>[UDP-RX]</green> Received <cyan>%d bytes</cyan> from VPN, forwarding to local client", len(payload))
+			}
+			// Send back to the last known peer
+			// Wait, the client sends us packets from peerAddr. We should send back to the SAME peerAddr.
+			// But since OnDatagram is async, we need a way to store peerAddr.
+			// For simplicity, we can just broadcast or store it in the stream struct.
+		}
+	}
+
+	targetPayload := []byte{SOCKS5_CMD_UDP_ASSOCIATE, SOCKS5_ATYP_IPV4, 0, 0, 0, 0, 0, 0}
+	arqObj.SendControlPacketWithTTL(
+		Enums.PACKET_SOCKS5_SYN,
+		0,
+		0,
+		1,
+		targetPayload,
+		Enums.DefaultPacketPriority(Enums.PACKET_SOCKS5_SYN),
+		true,
+		nil,
+		120*time.Second,
+	)
+
+	var lastPeerAddr *net.UDPAddr
+	var peerMu sync.Mutex
+
+	arqObj.OnDatagram = func(payload []byte) {
+		if len(payload) >= 2 {
+			peerMu.Lock()
+			peer := lastPeerAddr
+			peerMu.Unlock()
+			if peer != nil {
+				// Construct a valid SOCKS5 UDP response header:
+				// RSV (2 bytes) | FRAG (1 byte) | ATYP (1 byte) | DST.ADDR (var) | DST.PORT (2) | DATA
+				// The server sent payload starting with a dummy CMD (1 byte), then ATYP, DST.ADDR, DST.PORT, DATA.
+				// So payload format is: [dummy_CMD, ATYP, DST.ADDR..., DST.PORT_high, DST.PORT_low, DATA...]
+				// SOCKS5 UDP response should be: [0x00, 0x00, 0x00, ATYP, DST.ADDR..., DST.PORT_high, DST.PORT_low, DATA...]
+				// So we need 2 bytes of RSV (0x00, 0x00) + 1 byte of FRAG (0x00) + payload starting from ATYP (payload[1:]).
+				// Total size of SOCKS5 UDP datagram = 3 + (len(payload) - 1) = 2 + len(payload) bytes.
+				fullResp := make([]byte, 2+len(payload))
+				fullResp[0] = 0x00 // RSV
+				fullResp[1] = 0x00 // RSV
+				fullResp[2] = 0x00 // FRAG
+				copy(fullResp[3:], payload[1:]) // copy ATYP, DST.ADDR, DST.PORT, DATA
+
+				_, _ = udpConn.WriteToUDP(fullResp, peer)
+				if c.log != nil {
+					c.log.Debugf("📡 <green>[UDP-RX]</green> Forwarded <cyan>%d bytes</cyan> from VPN to local SOCKS client", len(payload)-2)
+				}
+			}
+		}
+	}
+
 	boundAddr := udpConn.LocalAddr().(*net.UDPAddr)
 	err = c.sendSocksReply(conn, SOCKS5_REPLY_SUCCESS, replyATYP, replyIP, uint16(boundAddr.Port))
 	if err != nil {
 		return
 	}
 
-	buf := make([]byte, 4096)
+	buf := make([]byte, 8192)
 	for {
 		_ = udpConn.SetReadDeadline(time.Now().Add(c.cfg.SOCKSUDPAssociateReadTimeout()))
 		n, peerAddr, err := udpConn.ReadFromUDP(buf)
@@ -617,91 +703,29 @@ func (c *Client) handleSocksUDPAssociate(ctx context.Context, conn net.Conn, cli
 			return
 		}
 
-		if n < 6 {
+		if n < 4 {
 			continue
 		}
 
-		if buf[2] != 0x00 {
+		peerMu.Lock()
+		lastPeerAddr = peerAddr
+		peerMu.Unlock()
+
+		datagram, err := SocksProto.ParseUDPDatagram(buf[:n])
+		if err != nil {
 			continue
 		}
 
-		payloadOffset := 0
-		var targetPort uint16
-		var targetAddr string
-		switch buf[3] {
-		case SOCKS5_ATYP_IPV4:
-			if n < 10 {
-				continue
-			}
-			payloadOffset = 10
-			targetAddr = net.IP(buf[4:8]).String()
-			targetPort = binary.BigEndian.Uint16(buf[8:10])
-		case SOCKS5_ATYP_DOMAIN:
-			if n < 5 {
-				continue
-			}
-			domainLen := int(buf[4])
-			payloadOffset = 4 + 1 + domainLen + 2
-			if payloadOffset > n || 5+domainLen > n {
-				continue
-			}
-			targetAddr = string(buf[5 : 5+domainLen])
-			targetPort = binary.BigEndian.Uint16(buf[4+1+domainLen : payloadOffset])
-		case SOCKS5_ATYP_IPV6:
-			if n < 22 {
-				continue
-			}
-			payloadOffset = 22
-			targetAddr = net.IP(buf[4:20]).String()
-			targetPort = binary.BigEndian.Uint16(buf[20:22])
-		default:
-			continue
+		if c.log != nil {
+			c.log.Debugf("📡 <green>[UDP-TX]</green> Sending <cyan>%d bytes</cyan> to VPN (SOCKS5 UDP)", n)
 		}
-
-		if payloadOffset > n {
-			continue
-		}
-
-		if targetPort != 53 {
-			c.rejectSocksUDPAssociateUnsupportedTarget(conn, targetAddr, targetPort)
-			continue
-		}
-
-		c.log.Infof("📡 <green>Received DNS Query from SOCKS5 UDP: <cyan>%d bytes</cyan>, Target: <cyan>%s:%d</cyan></green>", n-payloadOffset, targetAddr, targetPort)
-
-		dnsQuery := make([]byte, n-payloadOffset)
-		copy(dnsQuery, buf[payloadOffset:n])
-
-		// Захватываем локальные копии для горутины (избегаем race condition с buf)
-		localPeer := peerAddr
-		localConn := udpConn
-		localTarget := targetAddr
-		// Строим правильный SOCKS5 UDP заголовок ответа согласно RFC 1928:
-		// RSV(2) + FRAG(1) + ATYP(1) + BND.ADDR(4) + BND.PORT(2)
-		// BND.ADDR должен быть адресом источника (DNS-сервера), BND.PORT = 53
-		var respHeader []byte
-		if targetIP := net.ParseIP(localTarget).To4(); targetIP != nil {
-			// IPv4 target
-			respHeader = []byte{0x00, 0x00, 0x00, SOCKS5_ATYP_IPV4,
-				targetIP[0], targetIP[1], targetIP[2], targetIP[3],
-				0x00, 0x35, // port 53
-			}
-		} else {
-			// Fallback: 0.0.0.0:53 (для доменных или IPv6 целей)
-			respHeader = []byte{0x00, 0x00, 0x00, SOCKS5_ATYP_IPV4, 0, 0, 0, 0, 0x00, 0x35}
-		}
-
-		isHit := c.ProcessDNSQuery(dnsQuery, localPeer, func(resp []byte) {
-			fullResp := make([]byte, 0, len(respHeader)+len(resp))
-			fullResp = append(fullResp, respHeader...)
-			fullResp = append(fullResp, resp...)
-			_, _ = localConn.WriteToUDP(fullResp, localPeer)
-		})
-
-		if !isHit {
-			c.log.Debugf("🧳 <yellow>SOCKS5 DNS Miss or Pending - Keeping association open for client retry.</yellow>")
-			continue
-		}
+		
+		targetPayload := make([]byte, 1)
+		targetPayload[0] = 0x00 // dummy CMD
+		targetPayload = append(targetPayload, SocksProto.BuildTargetPayload(datagram.Target)...)
+		targetPayload = append(targetPayload, datagram.Payload...)
+		
+		arqObj.SendDatagram(targetPayload)
 	}
 }
 

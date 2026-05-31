@@ -189,8 +189,8 @@ MIN_ALLOWED_CLIENT_ARQ_INITIAL_RTO_SECONDS = 0.001
 	if cfg.MaxAllowedClientActiveStreams != 65535 {
 		t.Fatalf("unexpected active streams clamp: got=%d want=%d", cfg.MaxAllowedClientActiveStreams, 65535)
 	}
-	if cfg.ClientMaxUploadMTU != 255 {
-		t.Fatalf("unexpected upload mtu clamp: got=%d want=%d", cfg.ClientMaxUploadMTU, 255)
+	if cfg.ClientMaxUploadMTU != 999 {
+		t.Fatalf("unexpected upload mtu clamp: got=%d want=%d", cfg.ClientMaxUploadMTU, 999)
 	}
 	if cfg.ClientMaxDownloadMTU != 65535 {
 		t.Fatalf("unexpected download mtu clamp: got=%d want=%d", cfg.ClientMaxDownloadMTU, 65535)

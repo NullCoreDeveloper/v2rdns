@@ -26,20 +26,21 @@ var (
 )
 
 type Target struct {
+	Cmd         uint8
 	AddressType uint8
 	Host        string
 	Port        uint16
 }
 
 func ParseTargetPayload(payload []byte) (Target, error) {
-	if len(payload) < 3 {
+	if len(payload) < 4 {
 		return Target{}, ErrTargetTooShort
 	}
 
-	target := Target{AddressType: payload[0]}
-	offset := 1
+	target := Target{Cmd: payload[0], AddressType: payload[1]}
+	offset := 2
 
-	switch payload[0] {
+	switch payload[1] {
 	case AddressTypeIPv4:
 		if len(payload) < offset+4+2 {
 			return Target{}, ErrTargetTooShort

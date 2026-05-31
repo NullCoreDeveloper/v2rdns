@@ -31,6 +31,8 @@ func init() {
 		Enums.PACKET_STREAM_CLOSE_READ_ACK,
 		Enums.PACKET_STREAM_RST,
 		Enums.PACKET_STREAM_RST_ACK,
+		Enums.PACKET_STREAM_FEC_PARITY,
+		Enums.PACKET_STREAM_FEC_METRICS, // Fix: route FEC metrics to ARQ for adaptive parity adjustment
 	}
 
 	for _, pt := range streamTypes {

@@ -13,7 +13,7 @@ import (
 )
 
 func TestCodecRoundTrip(t *testing.T) {
-	methods := []int{0, 1, 2, 3, 4, 5}
+	methods := []int{0, 1, 2, 3, 4, 5, 6}
 	plaintext := []byte("masterdnsvpn-roundtrip-test")
 	rawKey := "0123456789abcdef0123456789abcdef"
 

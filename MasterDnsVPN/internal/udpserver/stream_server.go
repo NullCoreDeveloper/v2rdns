@@ -100,6 +100,13 @@ func (s *Stream_server) PushTXPacket(priority int, packetType uint8, sequenceNum
 
 	s.txQueueMu.Lock()
 
+	// Backpressure: reject new data packets if the queue is too large
+	if (packetType == Enums.PACKET_STREAM_DATA || packetType == Enums.PACKET_STREAM_FEC_PARITY) && s.TXQueue != nil && s.TXQueue.FastSize() > 2048 {
+		s.txQueueMu.Unlock()
+		putTXPacketToPool(pkt)
+		return false
+	}
+
 	switch packetType {
 	case Enums.PACKET_STREAM_DATA:
 		if _, exists := s.TXQueue.Get(dataKey); exists {

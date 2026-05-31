@@ -707,6 +707,10 @@ func (c *Client) buildPlannedOutboundFrames(
 	}
 
 	frames = frames[:0]
+	ednsSize := uint16(0)
+	if c.cfg.EnableEDNS0 {
+		ednsSize = EDnsSafeUDPSize
+	}
 
 	for _, resolverConn := range conns {
 		domain := resolverConn.Domain
@@ -734,7 +738,7 @@ func (c *Client) buildPlannedOutboundFrames(
 		var dnsPacket []byte
 		switch {
 		case firstDNSPacket == nil:
-			dnsPacket, err = DnsParser.BuildTunnelTXTQuestionPacketPrepared(prepared.normalized, prepared.qname, encoded, Enums.DNS_RECORD_TYPE_TXT, EDnsSafeUDPSize)
+			dnsPacket, err = DnsParser.BuildTunnelTXTQuestionPacketPrepared(prepared.normalized, prepared.qname, encoded, Enums.DNS_RECORD_TYPE_TXT, ednsSize)
 			if err != nil {
 				c.log.Errorf("BuildTunnelTXTQuestionPacketPrepared failed: %v | Domain: %s | QnameLen: %d | EncodedLen: %d | RawPayloadLen: %d | PacketType: %d", err, domain, len(prepared.qname), len(encoded), len(task.opts.Payload), task.opts.PacketType)
 				continue
@@ -750,7 +754,7 @@ func (c *Client) buildPlannedOutboundFrames(
 			var cached bool
 			dnsPacket, cached = packetByDomain[domain]
 			if !cached {
-				dnsPacket, err = DnsParser.BuildTunnelTXTQuestionPacketPrepared(prepared.normalized, prepared.qname, encoded, Enums.DNS_RECORD_TYPE_TXT, EDnsSafeUDPSize)
+				dnsPacket, err = DnsParser.BuildTunnelTXTQuestionPacketPrepared(prepared.normalized, prepared.qname, encoded, Enums.DNS_RECORD_TYPE_TXT, ednsSize)
 				if err != nil {
 					c.log.Errorf("BuildTunnelTXTQuestionPacketPrepared (cached) failed: %v", err)
 					continue
@@ -798,6 +802,7 @@ func (c *Client) asyncWriterWorker(ctx context.Context, id int, conn *net.UDPCon
 					_ = conn.SetWriteDeadline(lastDeadline)
 				}
 			}
+
 			for _, frame := range task.frames {
 				if frame.addr == nil || len(frame.packet) == 0 {
 					continue

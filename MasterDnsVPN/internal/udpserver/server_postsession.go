@@ -48,7 +48,7 @@ func (s *Server) dispatchPostSessionPacket(vpnPacket VpnProto.Packet, sessionRec
 	switch vpnPacket.PacketType {
 	case Enums.PACKET_PING:
 		return true
-	case Enums.PACKET_STREAM_DATA, Enums.PACKET_STREAM_RESEND:
+	case Enums.PACKET_STREAM_DATA, Enums.PACKET_STREAM_FEC_PARITY, Enums.PACKET_STREAM_RESEND:
 		return s.handleStreamDataRequest(vpnPacket)
 	case Enums.PACKET_STREAM_DATA_NACK:
 		return s.handleStreamDataNackRequest(vpnPacket)
@@ -260,7 +260,7 @@ func (s *Server) preprocessInboundPacket(vpnPacket VpnProto.Packet) bool {
 		case Enums.PACKET_STREAM_SYN, Enums.PACKET_SOCKS5_SYN:
 			record.enqueueOrphanReset(Enums.PACKET_STREAM_RST, vpnPacket.StreamID, 0)
 			return true
-		case Enums.PACKET_STREAM_DATA, Enums.PACKET_STREAM_RESEND:
+		case Enums.PACKET_STREAM_DATA, Enums.PACKET_STREAM_FEC_PARITY, Enums.PACKET_STREAM_RESEND:
 			record.enqueueOrphanReset(Enums.PACKET_STREAM_RST, vpnPacket.StreamID, 0)
 			return true
 		default:
@@ -279,7 +279,7 @@ func (s *Server) preprocessInboundPacket(vpnPacket VpnProto.Packet) bool {
 	}
 
 	switch vpnPacket.PacketType {
-	case Enums.PACKET_STREAM_DATA, Enums.PACKET_STREAM_RESEND, Enums.PACKET_DNS_QUERY_REQ, Enums.PACKET_STREAM_SYN, Enums.PACKET_SOCKS5_SYN:
+	case Enums.PACKET_STREAM_DATA, Enums.PACKET_STREAM_FEC_PARITY, Enums.PACKET_STREAM_RESEND, Enums.PACKET_DNS_QUERY_REQ, Enums.PACKET_STREAM_SYN, Enums.PACKET_SOCKS5_SYN:
 	default:
 		_ = s.queueImmediateControlAck(record, vpnPacket)
 	}

@@ -82,20 +82,24 @@ func buildResponseWithRCode(request []byte, rcode uint8) ([]byte, error) {
 		questionCount = header.QDCount
 	}
 
-	optStart, optLen := findOPTRecordRange(request, header, questionEndOffset)
+	opts, optsLen := extractOPTRecordsFromOffset(request, header, questionEndOffset)
+	arCount := uint16(len(opts))
 
-	response := make([]byte, dnsHeaderSize+questionLen+optLen)
+	response := make([]byte, dnsHeaderSize+questionLen+optsLen)
 	binary.BigEndian.PutUint16(response[0:2], header.ID)
 	binary.BigEndian.PutUint16(response[2:4], buildResponseFlags(header.Flags, rcode))
 	binary.BigEndian.PutUint16(response[4:6], questionCount)
 	// ANCount, NSCount are 0
-	binary.BigEndian.PutUint16(response[10:12], uint16(getARCount(optLen)))
+	binary.BigEndian.PutUint16(response[10:12], arCount)
 
 	if questionLen > 0 {
 		copy(response[dnsHeaderSize:], request[dnsHeaderSize:questionEndOffset])
 	}
-	if optLen > 0 {
-		copy(response[dnsHeaderSize+questionLen:], request[optStart:optStart+optLen])
+	
+	offset := dnsHeaderSize + questionLen
+	for _, opt := range opts {
+		copy(response[offset:], opt)
+		offset += len(opt)
 	}
 
 	return response, nil
@@ -109,24 +113,28 @@ func buildResponseWithRCodeLite(request []byte, parsed LitePacket, rcode uint8) 
 		return nil, ErrNotDNSRequest
 	}
 
-	optStart, optLen := findOPTRecordRange(request, parsed.Header, parsed.QuestionEndOffset)
-
 	questionLen := 0
 	if parsed.QuestionEndOffset >= dnsHeaderSize && parsed.QuestionEndOffset <= len(request) {
 		questionLen = parsed.QuestionEndOffset - dnsHeaderSize
 	}
 
-	response := make([]byte, dnsHeaderSize+questionLen+optLen)
+	opts, optsLen := extractOPTRecordsFromOffset(request, parsed.Header, parsed.QuestionEndOffset)
+	arCount := uint16(len(opts))
+
+	response := make([]byte, dnsHeaderSize+questionLen+optsLen)
 	binary.BigEndian.PutUint16(response[0:2], parsed.Header.ID)
 	binary.BigEndian.PutUint16(response[2:4], buildResponseFlags(parsed.Header.Flags, rcode))
 	binary.BigEndian.PutUint16(response[4:6], parsed.Header.QDCount)
-	binary.BigEndian.PutUint16(response[10:12], uint16(getARCount(optLen)))
+	binary.BigEndian.PutUint16(response[10:12], arCount)
 
 	if questionLen > 0 {
 		copy(response[dnsHeaderSize:], request[dnsHeaderSize:parsed.QuestionEndOffset])
 	}
-	if optLen > 0 {
-		copy(response[dnsHeaderSize+questionLen:], request[optStart:optStart+optLen])
+	
+	offset := dnsHeaderSize + questionLen
+	for _, opt := range opts {
+		copy(response[offset:], opt)
+		offset += len(opt)
 	}
 
 	return response, nil
