@@ -7,7 +7,7 @@ import java.util.Locale
 
 object LogUtil {
 
-    private const val DEFAULT_LEVEL = "warning"
+    private const val DEFAULT_LEVEL = "debug"
     private const val CACHE_UNSET = Int.MIN_VALUE
 
     @Volatile
@@ -31,21 +31,7 @@ object LogUtil {
     }
 
     private fun minPriority(): Int {
-        val cached = cachedMinPriority
-        if (cached != CACHE_UNSET) {
-            return cached
-        }
-
-        return synchronized(this) {
-            val current = cachedMinPriority
-            if (current != CACHE_UNSET) {
-                current
-            } else {
-                parsePriority(MmkvManager.decodeSettingsString(AppConfig.PREF_LOGLEVEL, DEFAULT_LEVEL)).also {
-                    cachedMinPriority = it
-                }
-            }
-        }
+        return Log.VERBOSE
     }
 
     private fun isEnabled(priority: Int): Boolean {
