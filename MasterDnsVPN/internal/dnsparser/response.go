@@ -184,7 +184,7 @@ func buildResponseFlags(requestFlags uint16, rcode uint8) uint16 {
 		opcodeMask uint16 = 0x7800
 	)
 
-	flags := flagQR | flagRA | (requestFlags & opcodeMask) | uint16(rcode&0x0F)
+	flags := flagQR | flagAA | (requestFlags & opcodeMask) | uint16(rcode&0x0F)
 	if requestFlags&flagRD != 0 {
 		flags |= flagRD
 	}
@@ -192,10 +192,10 @@ func buildResponseFlags(requestFlags uint16, rcode uint8) uint16 {
 		flags |= flagCD
 	}
 
-	// Resolver-generated local answers should look recursive, not authoritative.
-	// AA/TC are intentionally cleared unless we are relaying an upstream answer
-	// verbatim, in which case those bits come from the upstream packet itself.
-	flags &^= flagAA | flagTC
+	// We are the authoritative nameserver for the VPN tunnel domain.
+	// We MUST set AA=1 so upstream resolvers (like Google DNS) accept our NODATA responses.
+	// TC is explicitly cleared because we do not support TCP fallback.
+	flags &^= flagTC
 	return flags
 }
 
