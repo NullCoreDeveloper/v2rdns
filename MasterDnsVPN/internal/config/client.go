@@ -163,7 +163,7 @@ func defaultClientConfig() ClientConfig {
 		AutoDisableTimeoutServers:             true,
 		AutoDisableTimeoutWindowSeconds:       30.0,
 		BaseEncodeData:                        false,
-		EnableEDNS0:                           false,
+		EnableEDNS0:                           true,
 		UploadCompressionType:                 compression.TypeZSTD,
 		DownloadCompressionType:               compression.TypeZSTD,
 		CompressionMinSize:                    compression.DefaultMinSize,

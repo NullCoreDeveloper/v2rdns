@@ -193,7 +193,7 @@ func defaultServerConfig() ServerConfig {
 		MaxOutboundPacketsPerSec:          10000,
 		OutboundPacketBurst:               20000,
 
-		EnableEDNS0:                       false,
+		EnableEDNS0:                       true,
 
 		ClientMaxStreamsPerSession:        1000,
 		MaxAllowedClientActiveSessions:    255,
